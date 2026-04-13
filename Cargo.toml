@@ -1,0 +1,37 @@
+[package]
+name = "readme-code-extractor"
+version = "0.1.0"
+
+# As of April 2026, readme-extractor does NOT need 2021 Rust Edition - 2018 is enough.
+edition = "2018"
+# Rust 1.54 was released in July 2021, but it was still in 2018 Edition.
+#
+# "rust-version" itself is recognized only since Rust 1.56, but that's OK
+rust-version = "1.54.0"
+
+license = "BSD-2-Clause OR Apache-2.0 OR MIT"
+
+authors = ["Peter Lyons Kehl<peter.kehl@gmail.com>"]
+description = "Extract code blocks from your README.md (or another Markdown file)."
+
+categories = ["development-tools", "rust-patterns"]
+
+keywords = ["extract", "readme", "macro", "macros"]
+
+repository = "https://github.com/prudent-rs/readme-code-extractor"
+homepage = "https://github.com/prudent-rs/readme-code-extractor"
+
+[lib]
+proc-macro = true
+
+[lints.rust]
+unexpected_cfgs = { level = "forbid"}
+unknown_lints = { level = "forbid"}
+
+[dependencies]
+proc-macro-rules = "0.4.0"
+proc-macro2 = {version="1.0.60", features=["span-locations"] }
+readme-code-extractor-core = {version="0.1.0", path="../readme-code-extractor-core"}
+quote = "1.0.26"
+serde = { version = "1.0", features = ["derive"] }
+syn = "2.0.15"
