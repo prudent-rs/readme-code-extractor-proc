@@ -2,12 +2,8 @@
 name = "readme-code-extractor"
 version = "0.1.0"
 
-# As of April 2026, readme-extractor does NOT need 2021 Rust Edition - 2018 is enough.
 edition = "2018"
-# Rust 1.54 was released in July 2021, but it was still in 2018 Edition.
-#
-# "rust-version" itself is recognized only since Rust 1.56, but that's OK
-rust-version = "1.54.0"
+rust-version = "1.81.0"
 
 license = "BSD-2-Clause OR Apache-2.0 OR MIT"
 
