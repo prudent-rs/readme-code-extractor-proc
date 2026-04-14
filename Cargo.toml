@@ -27,7 +27,7 @@ unknown_lints = { level = "forbid"}
 [dependencies]
 proc-macro-rules = "0.4.0"
 proc-macro2 = {version="1.0.60", features=["span-locations"] }
-readme-code-extractor-core = {version="0.1.0", path="../readme-code-extractor-core"}
+readme-code-extractor-core = {version="= 0.1.0", path="../readme-code-extractor-core"}
 quote = "1.0.26"
 serde = { version = "1.0", features = ["derive"] }
 syn = "2.0.15"
