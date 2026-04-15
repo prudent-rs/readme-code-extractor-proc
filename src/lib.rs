@@ -16,7 +16,9 @@ const _ASSERT_README_CODE_EXTRACTOR_LIB_VERSION: () = {
 #[proc_macro]
 pub fn all(input: TokenStream) -> TokenStream {
     rules!(input.into() => {
-        // @TODO instead of readme_file_path_literal, accept a TOML config text
+        // @TODO instead of readme_file_path_literal, accept a TOML config text:
+        //
+        // $config_toml_content
         ( $readme_file_path_literal:literal ) => {
 
             let span = readme_file_path_literal.span();
@@ -47,14 +49,14 @@ pub fn nth(_input: TokenStream) -> TokenStream {
 #[proc_macro]
 pub fn create_nth_extractor_macro(input: TokenStream) -> TokenStream {
     rules!(input.into() => {
-        ( $name_of_new_extractor_macro:ident, $config_file_path:literal ) => {
+        ( $name_of_new_extractor_macro:ident, $config_toml_content:literal ) => {
 
-            let span = config_file_path.span();
+            let span = config_toml_content.span();
             quote_spanned! {span=>
                 #[macro_export]
                 macro_rules! #name_of_new_extractor_macro {
                     ($n:literal) => {
-                        ::readme_code_extractor_proc::nth!($config_file_path);
+                        ::readme_code_extractor_proc::nth!($n, #config_toml_content);
                         let _ = $$a;
                     };
                 }
