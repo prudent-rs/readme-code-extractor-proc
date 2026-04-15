@@ -16,6 +16,7 @@ const _ASSERT_README_CODE_EXTRACTOR_LIB_VERSION: () = {
 #[proc_macro]
 pub fn all(input: TokenStream) -> TokenStream {
     rules!(input.into() => {
+        // @TODO instead of readme_file_path_literal, accept a TOML config text
         ( $readme_file_path_literal:literal ) => {
 
             let span = readme_file_path_literal.span();
