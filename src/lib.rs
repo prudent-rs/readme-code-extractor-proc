@@ -22,12 +22,9 @@ const _ASSERT_README_CODE_EXTRACTOR_LIB_VERSION: () = {
 #[proc_macro]
 pub fn all(input: TokenStream) -> TokenStream {
     rules!(input.into() => {
-        // @TODO instead of readme_file_path_literal, accept a TOML config text:
-        //
-        // $config_toml_content
-        ( $readme_file_path_literal:literal ) => {
+        ( $config_toml_content:literal ) => {
 
-            let span = readme_file_path_literal.span();
+            let span = config_toml_content.span();
             // @TODO:
             let _ = span.local_file();
 
@@ -77,16 +74,19 @@ pub fn all_by_file(input: TokenStream) -> TokenStream {
             // common terminals/screens).)
             let config_toml_file_path_enclosed = config_toml_file_relative_path.to_string();
 
-            let config_toml_file_path_enclosed_bytes = config_toml_file_path_enclosed.as_bytes();
-            assert!( config_toml_file_path_enclosed_bytes[0]==b'"',
-                "Expecting file path {} to start with an enclosing quote \".",
-                config_toml_file_path_enclosed);
-
-            assert!( config_toml_file_path_enclosed_bytes[
-                        config_toml_file_path_enclosed_bytes.len()-1
-                    ]==b'"',
-                    "Expecting file path {} to end with an enclosing quote \".",
+            {// assertions
+                let config_toml_file_path_enclosed_bytes
+                    = config_toml_file_path_enclosed.as_bytes();
+                assert!( config_toml_file_path_enclosed_bytes[0]==b'"',
+                    "Expecting file path {} to start with an enclosing quote \".",
                     config_toml_file_path_enclosed);
+
+                assert!( config_toml_file_path_enclosed_bytes[
+                            config_toml_file_path_enclosed_bytes.len()-1
+                        ]==b'"',
+                        "Expecting file path {} to end with an enclosing quote \".",
+                        config_toml_file_path_enclosed);
+            }
 
             let config_toml_file_path = &config_toml_file_path_enclosed[
                 1..config_toml_file_path_enclosed.len()-1
@@ -99,20 +99,23 @@ pub fn all_by_file(input: TokenStream) -> TokenStream {
             let regenerated_file_path_literal = Literal::string(config_toml_file_path);
             let regenerated_file_path_enclosed = regenerated_file_path_literal.to_string();
             assert_eq!(config_toml_file_path_enclosed, regenerated_file_path_enclosed,
-                r"Can't parse/handle the given config (toml) file path literal (string) {}. It was 
+                r"Can't parse/handle the given config (toml) file path literal (string) {}. It was
                   handled as {}.", config_toml_file_path_enclosed, regenerated_file_path_enclosed);
 
-            let file_path = span.local_file().unwrap_or_else(|| {
-                panic!(r"Rust source file that invoked readme_code_extractor::all_by_file! macro
-                         for config (toml) file with relative path {} should have a known location.", config_toml_file_relative_path)
-            });
-            let parent_dir = file_path.parent().unwrap_or_else(|| {
-                panic!(r"Rust source file that invoked readme_code_extractor::all_by_file! macro for
-                         config (toml) file with relative path {} may exist, but we can't get its
-                         parent directory.",
-                         config_toml_file_relative_path)
-            });
-            let cfg_file_path = parent_dir.join( config_toml_file_path );
+            let cfg_file_path = {
+                let invoker_file_path = span.local_file().unwrap_or_else(|| {
+                    panic!(r"Rust source file that invoked readme_code_extractor::all_by_file!
+                            macro for config (toml) file with relative path {} should have a known
+                            location.", config_toml_file_relative_path)
+                });
+                let invoker_parent_dir = invoker_file_path.parent().unwrap_or_else(|| {
+                    panic!(r"Rust source file that invoked readme_code_extractor::all_by_file!
+                            macro for config (toml) file with relative path {} may exist, but we 
+                            can't get its parent directory.",
+                            config_toml_file_relative_path)
+                });
+                invoker_parent_dir.join( config_toml_file_path )
+            };
 
             // Error handling is modelling https://doc.rust-lang.org/nightly/src/core/result.rs.html
             // > `fn unwrap_failed`, which invokes `panic!("{msg}: {error:?}");`
@@ -126,7 +129,8 @@ pub fn all_by_file(input: TokenStream) -> TokenStream {
                 ::readme_code_extractor_proc::all!(#config_toml_content)
             }
         }
-    }).into()
+    })
+    .into()
 }
 
 #[proc_macro]
