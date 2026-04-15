@@ -16,29 +16,14 @@ const _ASSERT_README_CODE_EXTRACTOR_LIB_VERSION: () = {
 #[proc_macro]
 pub fn all(input: TokenStream) -> TokenStream {
     rules!(input.into() => {
-        ( $file_path_literal:literal ) => {
+        ( $readme_file_path_literal:literal ) => {
 
-            let span = file_path_literal.span();
+            let span = readme_file_path_literal.span();
             // @TODO:
             let _ = span.local_file();
 
             let file_content = "content";
             let _ts = TokenStream::from_str(file_content).unwrap();
-
-            let s = "Hi";
-            let mut q = quote_spanned! {span=>
-                #s
-            };
-            let q2 = quote_spanned! {span=>
-            };
-            q.extend( q2);
-            q
-        }
-        ( $file_path_literal:literal,
-
-        ) => {
-
-            let span = file_path_literal.span();
 
             let s = "Hi";
             let mut q = quote_spanned! {span=>
@@ -56,6 +41,25 @@ pub fn all(input: TokenStream) -> TokenStream {
 #[proc_macro]
 pub fn nth(_input: TokenStream) -> TokenStream {
     todo!()
+}
+
+#[proc_macro]
+pub fn create_nth_extractor_macro(input: TokenStream) -> TokenStream {
+    rules!(input.into() => {
+        ( $name_of_new_extractor_macro:ident, $config_file_path:literal ) => {
+
+            let span = config_file_path.span();
+            quote_spanned! {span=>
+                #[macro_export]
+                macro_rules! #name_of_new_extractor_macro {
+                    ($n:literal) => {
+                        ::readme_code_extractor_proc::nth!($config_file_path);
+                        let _ = $$a;
+                    };
+                }
+            }
+        }
+    }).into()
 }
 
 #[doc(hidden)]
