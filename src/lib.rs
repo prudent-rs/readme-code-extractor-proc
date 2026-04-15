@@ -5,6 +5,7 @@ use proc_macro_rules::rules;
 use quote::{quote, quote_spanned};
 //use readme_code_extractor_lib::types::Config;
 use core::str::FromStr;
+//use std::path::Path;
 
 #[doc(hidden)]
 const _ASSERT_README_CODE_EXTRACTOR_LIB_VERSION: () = {
@@ -26,6 +27,7 @@ pub fn all(input: TokenStream) -> TokenStream {
             let _ = span.local_file();
 
             let file_content = "content";
+            // @TODO construct the file path
             let _ts = TokenStream::from_str(file_content).unwrap();
 
             let s = "Hi";
@@ -46,13 +48,19 @@ pub fn all(input: TokenStream) -> TokenStream {
 #[proc_macro]
 pub fn all_by_file(input: TokenStream) -> TokenStream {
     rules!(input.into() => {
-        ( $config_toml_file_path:literal ) => {
+        ( $config_toml_file_relative_path:literal ) => {
 
             let span = config_toml_file_path.span();
-            
-            let config_toml_file_path = config_toml_file_path.to_string();
-            // @TODO error handling (or not)
-            let config_toml_content = std::fs::read_to_string(config_toml_file_path).unwrap();
+            let config_toml_file_path = config_toml_file_relative_path.to_string();
+
+            let parent_dir = span.local_file().unwrap_or_else(|| {
+                panic!("Rust source file that invoked readme_code_extractor::all_by_file! macro for config (toml) file with relative path{config_toml_file_relative_path} should have a known location.")
+            });
+            let cfg_file_path = parent_dir.join( config_toml_file_path );
+
+            // Error handling is modelling https://doc.rust-lang.org/nightly/src/core/result.rs.html
+            // > `fn unwrap_failed`, which invokes `panic!("{msg}: {error:?}");`
+            let config_toml_content = std::fs::read_to_string(cfg_file_path).unwrap_or_else("Expecting");
 
             quote_spanned! {span=>
                 ::readme_code_extractor_proc::all!(#config_toml_content)
