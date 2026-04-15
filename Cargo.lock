@@ -50,23 +50,23 @@ dependencies = [
 ]
 
 [[package]]
-name = "readme-code-extractor"
+name = "readme-code-extractor-lib"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "toml",
+]
+
+[[package]]
+name = "readme-code-extractor-proc"
 version = "0.1.0"
 dependencies = [
  "proc-macro-rules",
  "proc-macro2",
  "quote",
- "readme-code-extractor-core",
+ "readme-code-extractor-lib",
  "serde",
  "syn",
-]
-
-[[package]]
-name = "readme-code-extractor-core"
-version = "0.1.0"
-dependencies = [
- "serde",
- "toml",
 ]
 
 [[package]]

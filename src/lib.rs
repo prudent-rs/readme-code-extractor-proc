@@ -2,19 +2,19 @@
 
 use proc_macro::TokenStream;
 use proc_macro_rules::rules;
-use quote::quote_spanned;
-//use readme_code_extractor_core::types::Config;
+use quote::{quote, quote_spanned};
+//use readme_code_extractor_lib::types::Config;
 use core::str::FromStr;
 
 #[doc(hidden)]
-const _ASSERT_README_CODE_EXTRACTOR_VERSION: () = {
-    if !readme_code_extractor_core::is_exact_version(env!("CARGO_PKG_VERSION")) {
-        panic!("prudent-rs/readme-code-extractor-core is of different version than prudent-rs/readme-code-extractor. Please report this as an issue, along with both versions.");
+const _ASSERT_README_CODE_EXTRACTOR_LIB_VERSION: () = {
+    if !readme_code_extractor_lib::is_exact_version(env!("CARGO_PKG_VERSION")) {
+        panic!("prudent-rs/readme-code-extractor-lib is of different version than prudent-rs/readme-code-extractor-proc. Please report this as an issue, along with both versions.");
     }
 };
 
 #[proc_macro]
-pub fn black_box(input: TokenStream) -> TokenStream {
+pub fn all(input: TokenStream) -> TokenStream {
     rules!(input.into() => {
         ( $file_path_literal:literal ) => {
 
@@ -48,6 +48,25 @@ pub fn black_box(input: TokenStream) -> TokenStream {
             };
             q.extend( q2);
             q
+        }
+    })
+    .into()
+}
+
+#[proc_macro]
+pub fn nth(_input: TokenStream) -> TokenStream {
+    todo!()
+}
+
+#[doc(hidden)]
+#[proc_macro]
+pub fn version(input: TokenStream) -> TokenStream {
+    rules!(input.into() => {
+        () => {
+            let version = env!("CARGO_PKG_VERSION");
+            quote! {
+                #version
+            }
         }
     })
     .into()
