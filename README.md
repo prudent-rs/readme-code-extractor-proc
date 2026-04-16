@@ -31,3 +31,10 @@ We do NOT, and will NOT, support loading of the configuration (TOML) from a sepa
 Every invocation of nth_*** extraction does parse the whole file (`README.md` or as configured). The
 cost is irrelevant. We do NOT cache/store any data between the macro invocations. Rust macros must
 not keep/depend on any state between their invocations.
+
+## Compatibility (MSRV)
+
+`rust-version` (MSRV = minimum supported Rust version) in [Cargo.toml](Cargo.toml) is 1.85.1.
+However, this crate is not to be used directly, but through `readme-code-extractor`
+(`prudent-rs/readme-code-extractor`) instead, which requires Rust 1.86.0. As such, this crate is not
+tested with 1.85.1 anymore. It's now tested with 1.86.0 (and current `nightly`) Rust only.

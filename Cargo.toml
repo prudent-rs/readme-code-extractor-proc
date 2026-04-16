@@ -3,6 +3,7 @@ name = "readme-code-extractor-proc"
 version = "0.1.0"
 
 edition = "2024"
+# If increased, update README.md.
 rust-version = "1.85.1"
 
 license = "BSD-2-Clause OR Apache-2.0 OR MIT"
