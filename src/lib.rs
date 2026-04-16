@@ -18,13 +18,13 @@ const _ASSERT_README_CODE_EXTRACTOR_LIB_VERSION: () = {
     }
 };
 
-struct BoxedStrSubSlice {
-    s: Box<str>,
+struct OpaqueStringSlice {
+    s: String,
     start_incl: usize,
     end_excl: usize,
 }
-impl BoxedStrSubSlice {
-    pub fn new(s: Box<str>, start_incl: usize, end_excl: usize) -> Self {
+impl OpaqueStringSlice {
+    pub fn new(s: String, start_incl: usize, end_excl: usize) -> Self {
         Self {
             s,
             start_incl,
@@ -32,7 +32,7 @@ impl BoxedStrSubSlice {
         }
     }
 }
-impl AsRef<str> for BoxedStrSubSlice {
+impl AsRef<str> for OpaqueStringSlice {
     fn as_ref(&self) -> &str {
         &self.s[self.start_incl..self.end_excl]
     }
@@ -43,20 +43,34 @@ fn string_literal_content(literal: &Literal) -> impl AsRef<str> {
     // Initially it's enclosed by "...", r"...", r#"..."# etc.
     let enclosed = literal.to_string();
     if enclosed.len() < 2 {
-        panic!("Expecting a string literal, but received: {}", enclosed);
+        panic!(
+            "Expecting an enclosed string literal (at least two bytes), but received: {}",
+            enclosed
+        );
     }
     // ASCII is common for code scope-only configuration, so applying the initial size same as
     // number of bytes.
-    let mut chars = Vec::with_capacity(enclosed.len());
-    chars.extend(enclosed.chars());
+    //let mut chars = Vec::with_capacity(enclosed.len());
+    //chars.extend(enclosed.chars());
+    let mut chars = enclosed.chars();
+    let first = chars
+        .next()
+        .expect("Can't parse the first character. Wrong bytes?");
 
-    if chars[0] == '"' {
+    let (start_incl, end_excl) = if first == '"' {
+        let last = chars
+            .next_back()
+            .expect("Can't parse the last character. Wrong bytes?");
+        assert_eq!(
+            last, '"',
+            "Expecting the last character to be a closing quote '\"', but it's: '{last}'."
+        );
+        (1, enclosed.len() - 2)
     } else {
-    }
+        todo!()
+    };
 
-    //enclosed
-    let len = enclosed.len();
-    BoxedStrSubSlice::new(enclosed.into_boxed_str(), 0, len)
+    OpaqueStringSlice::new(enclosed, start_incl, end_excl)
 }
 
 #[doc(hidden)]
