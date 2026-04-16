@@ -2,8 +2,8 @@
 
 use core::str::FromStr;
 use proc_macro::TokenStream;
-use proc_macro2::Literal;
 use proc_macro_rules::rules;
+use proc_macro2::Literal;
 use quote::{quote, quote_spanned};
 use readme_code_extractor_lib::traits::Config;
 //use std::path::Path;
@@ -18,8 +18,28 @@ const _ASSERT_README_CODE_EXTRACTOR_LIB_VERSION: () = {
     }
 };
 
+struct BoxedStrSubSlice {
+    s: Box<str>,
+    start_incl: usize,
+    end_excl: usize,
+}
+impl BoxedStrSubSlice {
+    pub fn new(s: Box<str>, start_incl: usize, end_excl: usize) -> Self {
+        Self {
+            s,
+            start_incl,
+            end_excl,
+        }
+    }
+}
+impl AsRef<str> for BoxedStrSubSlice {
+    fn as_ref(&self) -> &str {
+        &self.s[self.start_incl..self.end_excl]
+    }
+}
+
 #[doc(hidden)]
-fn string_literal_content(literal: &Literal) -> String {
+fn string_literal_content(literal: &Literal) -> impl AsRef<str> {
     // Initially it's enclosed by "...", r"...", r#"..."# etc.
     let enclosed = literal.to_string();
     if enclosed.len() < 2 {
@@ -30,7 +50,13 @@ fn string_literal_content(literal: &Literal) -> String {
     let mut chars = Vec::with_capacity(enclosed.len());
     chars.extend(enclosed.chars());
 
-    enclosed
+    if chars[0] == '"' {
+    } else {
+    }
+
+    //enclosed
+    let len = enclosed.len();
+    BoxedStrSubSlice::new(enclosed.into_boxed_str(), 0, len)
 }
 
 #[doc(hidden)]
