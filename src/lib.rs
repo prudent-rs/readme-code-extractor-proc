@@ -18,12 +18,12 @@ const _ASSERT_README_CODE_EXTRACTOR_LIB_VERSION: () = {
     }
 };
 
-struct OpaqueStringSlice {
+struct OwnedStringSlice {
     s: String,
     start_incl: usize,
     end_excl: usize,
 }
-impl OpaqueStringSlice {
+impl OwnedStringSlice {
     pub fn new(s: String, start_incl: usize, end_excl: usize) -> Self {
         Self {
             s,
@@ -32,7 +32,7 @@ impl OpaqueStringSlice {
         }
     }
 }
-impl AsRef<str> for OpaqueStringSlice {
+impl AsRef<str> for OwnedStringSlice {
     fn as_ref(&self) -> &str {
         &self.s[self.start_incl..self.end_excl]
     }
@@ -55,22 +55,41 @@ fn string_literal_content(literal: &Literal) -> impl AsRef<str> {
     let mut chars = enclosed.chars();
     let first = chars
         .next()
-        .expect("Can't parse the first character. Wrong bytes?");
+        .unwrap_or_else(||
+            panic!("Can't parse the first character of: {enclosed}")
+        );
 
+    
     let (start_incl, end_excl) = if first == '"' {
+        // ordinary "string literals"
         let last = chars
             .next_back()
-            .expect("Can't parse the last character. Wrong bytes?");
+            .unwrap_or_else(||
+                panic!("Can't parse the last character of: {enclosed}")
+            );
         assert_eq!(
             last, '"',
             "Expecting the last character to be a closing quote '\"', but it's: '{last}'."
         );
+        for c in chars {
+            if c == '\\' {
+                panic!(r###"When passing in an ordinary enclosed string literal "...", do not use
+                            any escaping (backslash). To pass in special characters, use an
+                            (unescaped) raw string literal like r"...", r#"..."#...", r##"..."##
+                            (and so on)."###)
+            }
+        }
         (1, enclosed.len() - 2)
-    } else {
+    } else if first =='r' {
+        // raw string literals
+
         todo!()
+    } else {
+        panic!(r###"Expecting a string literal, which would be either \"...\", or r\"...\",
+                    r#\"...\"#, r##"..."## (and so on). But received: {enclosed}"###)
     };
 
-    OpaqueStringSlice::new(enclosed, start_incl, end_excl)
+    OwnedStringSlice::new(enclosed, start_incl, end_excl)
 }
 
 #[doc(hidden)]
@@ -89,7 +108,7 @@ pub fn all(input: TokenStream) -> TokenStream {
 
             let file_content = "content";
             // @TODO construct the file path
-            let _ts = TokenStream::from_str(file_content).unwrap();
+            //let _ts = TokenStream::from_str(file_content).unwrap();
 
             let s = "Hi";
             let mut q = quote_spanned! {span=>
@@ -142,15 +161,13 @@ fn load_config_toml_file(config_toml_file_relative_path: &Literal) -> String {
         let config_toml_file_path_enclosed_bytes = config_toml_file_path_enclosed.as_bytes();
         assert!(
             config_toml_file_path_enclosed_bytes[0] == b'"',
-            "Expecting file path {} to start with an enclosing quote \".",
-            config_toml_file_path_enclosed
+            "Expecting file path {config_toml_file_path_enclosed} to start with a quote \"."
         );
 
         assert!(
             config_toml_file_path_enclosed_bytes[config_toml_file_path_enclosed_bytes.len() - 1]
                 == b'"',
-            "Expecting file path {} to end with an enclosing quote \".",
-            config_toml_file_path_enclosed
+            "Expecting file path {config_toml_file_path_enclosed} to end with a quote \"."
         );
     }
 
@@ -180,17 +197,15 @@ fn load_config_toml_file(config_toml_file_relative_path: &Literal) -> String {
             .unwrap_or_else(|| {
                 panic!(
                     r"Rust source file that invoked readme_code_extractor::all_by_file!
-                    macro for config (toml) file with relative path {} should have a known
-                    location.",
-                    config_toml_file_relative_path
+                      macro for config (toml) file with relative path
+                      {config_toml_file_relative_path} should have a known location."
                 )
             });
         let invoker_parent_dir = invoker_file_path.parent().unwrap_or_else(|| {
             panic!(
                 r"Rust source file that invoked readme_code_extractor::all_by_file!
-                    macro for config (toml) file with relative path {} may exist, but we 
-                    can't get its parent directory.",
-                config_toml_file_relative_path
+                  macro for config (toml) file with relative path {config_toml_file_relative_path}
+                  may exist, but we can't get its parent directory.",
             )
         });
         invoker_parent_dir.join(config_toml_file_path)
@@ -201,8 +216,7 @@ fn load_config_toml_file(config_toml_file_relative_path: &Literal) -> String {
     std::fs::read_to_string(&cfg_file_path).unwrap_or_else(|e| {
         let cfg_file_path = cfg_file_path.to_str().unwrap_or("");
         panic!(
-            "Expecting a config (toml) file {}, but opening it failed: {:?}",
-            cfg_file_path, e
+            "Expecting a config (toml) file {cfg_file_path}, but opening it failed: {e:?}",
         )
     })
 }
