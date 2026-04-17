@@ -1,11 +1,11 @@
 #![doc = include_str!("../README.md")]
 
-use core::str::FromStr;
+//use core::str::FromStr;
 use proc_macro::TokenStream;
 use proc_macro_rules::rules;
 use proc_macro2::Literal;
 use quote::{quote, quote_spanned};
-use readme_code_extractor_lib::traits::Config;
+//use readme_code_extractor_lib::traits::Config;
 //use std::path::Path;
 
 const _ASSERT_README_CODE_EXTRACTOR_LIB_VERSION: () = {
@@ -14,89 +14,11 @@ const _ASSERT_README_CODE_EXTRACTOR_LIB_VERSION: () = {
         // can't report more details.
         panic!(
             "prudent-rs/readme-code-extractor-proc is of different version than \
-                prudent-rs/readme-code-extractor-lib. Please report this as an issue, along with \
-                both versions."
+             prudent-rs/readme-code-extractor-lib. Please report this as an issue, along with \
+             both versions."
         );
     }
 };
-
-struct OwnedStringSlice {
-    s: String,
-    start_incl: usize,
-    end_excl: usize,
-}
-impl OwnedStringSlice {
-    pub fn new(s: String, start_incl: usize, end_excl: usize) -> Self {
-        Self {
-            s,
-            start_incl,
-            end_excl,
-        }
-    }
-}
-impl AsRef<str> for OwnedStringSlice {
-    fn as_ref(&self) -> &str {
-        &self.s[self.start_incl..self.end_excl]
-    }
-}
-
-#[doc(hidden)]
-fn string_literal_content(literal: &Literal) -> impl AsRef<str> {
-    // Initially it's enclosed by "...", r"...", r#"..."# etc.
-    let enclosed = literal.to_string();
-    if enclosed.len() < 2 {
-        panic!(
-            "Expecting an enclosed string literal (at least two bytes), but received: {}",
-            enclosed
-        );
-    }
-    // ASCII is common for code scope-only configuration, so applying the initial size same as
-    // number of bytes.
-    //let mut chars = Vec::with_capacity(enclosed.len());
-    //chars.extend(enclosed.chars());
-    let mut chars = enclosed.chars();
-    let first = chars
-        .next()
-        .unwrap_or_else(|| panic!("Can't parse the first character of: {enclosed}"));
-
-    let (start_incl, end_excl) = if first == '"' {
-        // ordinary "string literals"
-        let last = chars
-            .next_back()
-            .unwrap_or_else(|| panic!("Can't parse the last character of: {enclosed}"));
-        assert_eq!(
-            last, '"',
-            "Expecting the last character to be a closing quote '\"', but it's: '{last}'."
-        );
-        for c in chars {
-            if c == '\\' {
-                panic!(
-                    "When passing in an ordinary enclosed string literal \"...\", do not use \
-                        any escaping (backslash). To pass in special characters, use an \
-                        (unescaped) raw string literal like r\"...\", r#\"...\"#..., r##\"...\"## \
-                        (and so on)."
-                )
-            }
-        }
-        (1, enclosed.len() - 2)
-    } else if first == 'r' {
-        // raw string literals
-
-        todo!()
-    } else {
-        panic!(
-            r###"Expecting a string literal, which would be either \"...\", or r\"...\",
-                    r#\"...\"#, r##"..."## (and so on). But received: {enclosed}"###
-        )
-    };
-
-    OwnedStringSlice::new(enclosed, start_incl, end_excl)
-}
-
-#[doc(hidden)]
-fn get_config(config_toml_content: Literal) -> Box<dyn Config> {
-    todo!()
-}
 
 #[proc_macro]
 pub fn all(input: TokenStream) -> TokenStream {
@@ -107,7 +29,7 @@ pub fn all(input: TokenStream) -> TokenStream {
             // @TODO:
             let _ = span.local_file();
 
-            let file_content = "content";
+            let _file_content = "content";
             // @TODO construct the file path
             //let _ts = TokenStream::from_str(file_content).unwrap();
 
@@ -221,6 +143,38 @@ fn load_config_toml_file(config_toml_file_relative_path: &Literal) -> String {
         panic!("Expecting a config (toml) file {cfg_file_path}, but opening it failed: {e:?}",)
     })
 }
+
+// @TODO remove
+/*#[proc_macro]
+pub fn dbg_print_span_of(input: TokenStream) -> TokenStream {
+    use proc_macro::TokenTree;
+    for tree in input {
+        match tree {
+            TokenTree::Literal(literal) => {
+                let span = literal.span();
+                panic!(
+                    "span.local_file: {:?}, span.file: {:?}",
+                    span.local_file(),
+                    span.file()
+                )
+            }
+            _ => {}
+        }
+    }
+    panic!();
+    /*rules!(input.into() => {
+        ( $literal:literal ) => {
+
+            let span = literal.span();
+            if true {
+                //let local_file = span.local_file().map_or(|path| path.to_string(), "None".to_owned());
+                panic!( "span.local_file: {:?}, span.file: {:?}", span.local_file(), span.file())
+            }
+            quote! {}
+        }
+    }).into()*/
+}
+*/
 
 // Invoked by `readme_code_extractor::all_by_file`.
 #[doc(hidden)]
