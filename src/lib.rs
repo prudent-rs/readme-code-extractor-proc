@@ -199,6 +199,12 @@ pub fn nth(_input: TokenStream) -> TokenStream {
     todo!()
 }
 
+/// This is like `readme_code_extractor::all_by_file``, except that `all_by_file` is a declarative
+/// macro (macro by example, defined by `macro_rules`). However, [create_nth_extractor_macro] can't
+/// be declarative. Why? Because it itself defines a new declarative macro which needs to have a
+/// capturing variable (parameter). Capturing variables (parameters) start with a dollar character,
+/// but if [create_nth_extractor_macro] itself were a declarative macro, it couldn't generate/return
+/// a dollar character.
 #[proc_macro]
 pub fn create_nth_extractor_macro(input: TokenStream) -> TokenStream {
     rules!(input.into() => {
