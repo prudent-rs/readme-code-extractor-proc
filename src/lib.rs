@@ -3,7 +3,7 @@
 //use core::str::FromStr;
 use proc_macro::TokenStream;
 use proc_macro_rules::rules;
-use proc_macro2::Literal;
+//use proc_macro2::Literal;
 use quote::{quote, quote_spanned};
 //use readme_code_extractor_lib::traits::Config;
 //use std::path::Path;
@@ -19,6 +19,22 @@ const _ASSERT_README_CODE_EXTRACTOR_LIB_VERSION: () = {
         );
     }
 };
+
+/// NOT public - for testing of [readme_code_extractor_lib::load_file] only. See
+/// [readme_code_extractor_lib::load_file].
+#[doc(hidden)]
+#[proc_macro]
+pub fn test_load_file(input: TokenStream) -> TokenStream {
+    rules!(input.into() => {
+        ( $literal:literal ) => {
+            let content = readme_code_extractor_lib::load_file(&literal);
+            quote! {
+                #content
+            }
+        }
+    })
+    .into()
+}
 
 /// Process all code blocks in the given input.
 ///
@@ -103,7 +119,7 @@ pub fn all_by_file(input: TokenStream) -> TokenStream {
         ( $config_toml_file_relative_path:literal ) => {
 
             let span = config_toml_file_relative_path.span();
-            let config_toml_content = readme_code_extractor_lib::load_config_toml_file(
+            let config_toml_content = readme_code_extractor_lib::load_file(
                 &config_toml_file_relative_path);
 
             quote_spanned! {span=>
