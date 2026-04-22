@@ -3,8 +3,7 @@
 use core::str::FromStr;
 use proc_macro::TokenStream as ProcTokenStream;
 use proc_macro_rules::rules;
-use proc_macro2::TokenStream;
-//use proc_macro2::Literal;
+use proc_macro2::{Span, TokenStream};
 use quote::{quote, quote_spanned};
 use readme_code_extractor_lib::public::{Config, ConfigAndSpan, ReadmeBlock, ReadmeExtracted};
 
@@ -84,13 +83,13 @@ pub fn all(input: ProcTokenStream) -> ProcTokenStream {
 
             let span = config_toml_content.span();
 
-            let preamble_text= if let Some(preamble_text) = readme_extracted.preamble_text() {
+            /*let _preamble_text= if let Some(preamble_text) = readme_extracted.preamble_text() {
                 quote_spanned! {span=>
                     //@TODO
                 }
             } else {
                 TokenStream::new()
-            };
+            };*/
             let preamble_code = if let Some(preamble_code) = readme_extracted.preamble_code() {
                 quote_spanned! {span=>
                     //@TODO
@@ -104,20 +103,22 @@ pub fn all(input: ProcTokenStream) -> ProcTokenStream {
             } else {
                 TokenStream::new()
             };//@TODO use
+            //-----
+
+            let config_generated_len_per_block = 0;
+            //--
 
             let blocks = readme_extracted.non_preamble_blocks().collect::<Vec<_>>();
 
-            /// @TODO apply backtick suffixes like "ignore" or "norun"
-            let code_blocks = blocks.iter().filter_map( ReadmeBlock::code );
-            let mut code_block_contents = code_blocks.map(|c| c.code());
+            // @TODO apply backtick suffixes like "ignore" or "norun"
+            let mut code_blocks = Vec::with_capacity( blocks.len()/2 + 1);
+            code_blocks.extend( blocks.iter().filter_map( ReadmeBlock::code ) );
 
+            /*let mut code_block_contents = code_blocks.iter().map(|c| c.code());
             let code_blocks_len_sum = code_block_contents.clone().map(|s| s.len() ).sum::<usize>();
-            let _/*config*/= {};
+            */
 
-            let mut v = Vec::<()>::new();
-
-
-            let max_code_len = blocks.iter().map(|b| if let Some(code) = b.code() { code.code().len() } else {0} ).max();
+            //let mut 
 
             for block in readme_extracted.non_preamble_blocks() {
                 if let Some(_text_block) = block.text() {
@@ -147,6 +148,35 @@ pub fn all(input: ProcTokenStream) -> ProcTokenStream {
             q
         }
     })
+    .into()
+}
+
+fn impl_all(config: &dyn Config, span: Span) -> ProcTokenStream {
+    let (prefix_before_insert, (max_insert_len, after_insert)) =
+        if let Some(headers) = config.ordinary_code_headers() {
+            (
+                headers.prefix_before_insert(),
+                if let Some(inserts) = headers.inserts() {
+                    (
+                        inserts
+                            .inserts()
+                            .iter()
+                            .map(|&s| s.len())
+                            .max()
+                            .unwrap_or(0),
+                        "",
+                    )
+                } else {
+                    (0usize, "")
+                },
+            )
+        } else {
+            ("", (0usize, ""))
+        };
+
+    quote_spanned! {span=>
+        // @TODO
+    }
     .into()
 }
 
