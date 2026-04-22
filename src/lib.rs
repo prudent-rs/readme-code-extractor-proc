@@ -1,12 +1,11 @@
 #![doc = include_str!("../README.md")]
 
-//use core::str::FromStr;
 use proc_macro::TokenStream;
 use proc_macro_rules::rules;
 //use proc_macro2::Literal;
 use quote::{quote, quote_spanned};
-//use readme_code_extractor_lib::traits::Config;
-//use std::path::Path;
+//use readme_code_extractor_lib::private::traits::Config;
+use readme_code_extractor_lib::public::ConfigAndSpan;
 
 const _ASSERT_README_CODE_EXTRACTOR_LIB_VERSION: () = {
     if !readme_code_extractor_lib::is_exact_version(env!("CARGO_PKG_VERSION")) {
@@ -20,9 +19,10 @@ const _ASSERT_README_CODE_EXTRACTOR_LIB_VERSION: () = {
     }
 };
 
+// @TODO pass first param: file path
 /// NOT public - for testing of [readme_code_extractor_lib::load_file] only. See
 /// [readme_code_extractor_lib::load_file].
-#[doc(hidden)]
+/*#[doc(hidden)]
 #[proc_macro]
 pub fn test_load_file(input: TokenStream) -> TokenStream {
     rules!(input.into() => {
@@ -34,7 +34,7 @@ pub fn test_load_file(input: TokenStream) -> TokenStream {
         }
     })
     .into()
-}
+}*/
 
 /// Process all code blocks in the given input.
 ///
@@ -58,13 +58,10 @@ pub fn all(input: TokenStream) -> TokenStream {
     rules!(input.into() => {
         ( $config_toml_content:literal ) => {
 
+            let config_content_and_span = readme_code_extractor_lib::public::config_content_and_span(&config_toml_content);
+            let config_and_span = readme_code_extractor_lib::public::config_and_span(&config_content_and_span);
             let span = config_toml_content.span();
-            // @TODO:
-            let _ = span.local_file();
 
-            let _file_content = "content";
-            // @TODO construct the file path
-            //let _ts = TokenStream::from_str(file_content).unwrap();
 
             let s = "Hi";
             let mut q = quote_spanned! {span=>
@@ -112,6 +109,7 @@ pub fn dbg_print_span_of(input: TokenStream) -> TokenStream {
 */
 
 // Invoked by `readme_code_extractor::all_by_file`.
+/*
 #[doc(hidden)]
 #[proc_macro]
 pub fn all_by_file(input: TokenStream) -> TokenStream {
@@ -128,7 +126,7 @@ pub fn all_by_file(input: TokenStream) -> TokenStream {
         }
     })
     .into()
-}
+}*/
 
 #[proc_macro]
 pub fn nth(_input: TokenStream) -> TokenStream {
