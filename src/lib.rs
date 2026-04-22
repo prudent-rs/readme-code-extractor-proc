@@ -1,11 +1,12 @@
 #![doc = include_str!("../README.md")]
 
-use proc_macro::TokenStream;
+use core::str::FromStr;
+use proc_macro::TokenStream as ProcTokenStream;
 use proc_macro_rules::rules;
+use proc_macro2::TokenStream;
 //use proc_macro2::Literal;
 use quote::{quote, quote_spanned};
-//use readme_code_extractor_lib::private::traits::Config;
-use readme_code_extractor_lib::public::ConfigAndSpan;
+use readme_code_extractor_lib::public::{Config, ConfigAndSpan, ReadmeBlock, ReadmeExtracted};
 
 const _ASSERT_README_CODE_EXTRACTOR_LIB_VERSION: () = {
     if !readme_code_extractor_lib::is_exact_version(env!("CARGO_PKG_VERSION")) {
@@ -36,6 +37,23 @@ pub fn test_load_file(input: TokenStream) -> TokenStream {
     .into()
 }*/
 
+macro_rules! token_stream_from_str {
+    ($input_string:expr, $err_intended_result_description:expr) => {
+        ({
+            let input_string = $input_string;
+            let result = TokenStream::from_str(input_string);
+            if let Err(e) = result {
+                panic!(
+                    "readme-code-extractor-proc: Parsing {} failed. Unpaired or incorrect Rust \n
+                     tokens. Input:\n{}\nError: {}",
+                    $err_intended_result_description, input_string, e
+                );
+            }
+            result.unwrap()
+        })
+    };
+}
+
 /// Process all code blocks in the given input.
 ///
 /// The given input is
@@ -54,14 +72,70 @@ pub fn test_load_file(input: TokenStream) -> TokenStream {
 ///     in a module or a function), so the raw string's actual content starting on a new line at
 ///     column 0 should look OK.
 #[proc_macro]
-pub fn all(input: TokenStream) -> TokenStream {
+pub fn all(input: ProcTokenStream) -> ProcTokenStream {
     rules!(input.into() => {
         ( $config_toml_content:literal ) => {
 
             let config_content_and_span = readme_code_extractor_lib::public::config_content_and_span(&config_toml_content);
             let config_and_span = readme_code_extractor_lib::public::config_and_span(&config_content_and_span);
+            let readme_loaded = readme_code_extractor_lib::public::readme_load(&config_and_span);
+            let mut readme_extracted = readme_code_extractor_lib::public::readme_extract(&readme_loaded);
+            let config = config_and_span.config();
+
             let span = config_toml_content.span();
 
+            let preamble_text= if let Some(preamble_text) = readme_extracted.preamble_text() {
+                quote_spanned! {span=>
+                    //@TODO
+                }
+            } else {
+                TokenStream::new()
+            };
+            let preamble_code = if let Some(preamble_code) = readme_extracted.preamble_code() {
+                quote_spanned! {span=>
+                    //@TODO
+                }
+            } else {
+                TokenStream::new()
+            };
+
+            let _/*prefix_before_preamble*/ = if config.prefix_before_preamble().len() > 0 {
+                token_stream_from_str!( config.prefix_before_preamble(), "Config::prefix_before_preamble")
+            } else {
+                TokenStream::new()
+            };//@TODO use
+
+            let blocks = readme_extracted.non_preamble_blocks().collect::<Vec<_>>();
+
+            /// @TODO apply backtick suffixes like "ignore" or "norun"
+            let code_blocks = blocks.iter().filter_map( ReadmeBlock::code );
+            let mut code_block_contents = code_blocks.map(|c| c.code());
+
+            let code_blocks_len_sum = code_block_contents.clone().map(|s| s.len() ).sum::<usize>();
+            let _/*config*/= {};
+
+            let mut v = Vec::<()>::new();
+
+
+            let max_code_len = blocks.iter().map(|b| if let Some(code) = b.code() { code.code().len() } else {0} ).max();
+
+            for block in readme_extracted.non_preamble_blocks() {
+                if let Some(_text_block) = block.text() {
+                    //@TODO - if ever needed; then also adjust max_code_len above
+                }
+                if let Some(code_block) = block.code() {
+                    if config.prefix_before_preamble().len() > 0 {
+
+                    }
+                }
+            }
+
+            //....
+            let ordinary_code_suffix = if config.ordinary_code_suffix().len() > 0 {
+                token_stream_from_str!( config.ordinary_code_suffix(), "Config::ordinary_code_suffix")
+            } else {
+                TokenStream::new()
+            };
 
             let s = "Hi";
             let mut q = quote_spanned! {span=>
@@ -129,7 +203,7 @@ pub fn all_by_file(input: TokenStream) -> TokenStream {
 }*/
 
 #[proc_macro]
-pub fn nth(_input: TokenStream) -> TokenStream {
+pub fn nth(_input: ProcTokenStream) -> ProcTokenStream {
     todo!()
 }
 
@@ -140,7 +214,7 @@ pub fn nth(_input: TokenStream) -> TokenStream {
 /// but if [create_nth_extractor_macro] itself were a declarative macro, it couldn't generate/return
 /// a dollar character.
 #[proc_macro]
-pub fn create_nth_extractor_macro(input: TokenStream) -> TokenStream {
+pub fn create_nth_extractor_macro(input: ProcTokenStream) -> ProcTokenStream {
     rules!(input.into() => {
         ( $name_of_new_extractor_macro:ident, $config_toml_content:literal ) => {
 
@@ -164,7 +238,7 @@ pub fn create_nth_extractor_macro(input: TokenStream) -> TokenStream {
 
 #[doc(hidden)]
 #[proc_macro]
-pub fn version(input: TokenStream) -> TokenStream {
+pub fn version(input: ProcTokenStream) -> ProcTokenStream {
     rules!(input.into() => {
         () => {
             const VERSION: &str = env!("CARGO_PKG_VERSION");
