@@ -200,26 +200,15 @@ fn impl_all<'a>(
         all_code.push_str(&code);
     }
 
-    /*let mut code_block_contents = code_blocks.iter().map(|c| c.code());
-    let code_blocks_len_sum = code_block_contents.clone().map(|s| s.len() ).sum::<usize>();
-    */
-
-    /*for block in readme_extracted.non_preamble_blocks() {
-        if let Some(_text_block) = block.text() {
-            //@TODO - if ever needed; then also adjust max_code_len above
-        }
-        if let Some(code_block) = block.code() {
-            if config.start_prefix().len() > 0 {}
-        }
-    }*/
-
-    //....
-
     let ts = token_stream_from_str!(
         &all_code,
         "All code blocks extended, and with start_prefix and final_suffix"
     );
-    ts.into()
+    quote_spanned! {span=>
+        #ts
+    }
+    .into()
+    //ts.into()
 }
 
 // @TODO remove
