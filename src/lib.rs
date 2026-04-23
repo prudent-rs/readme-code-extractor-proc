@@ -78,11 +78,11 @@ pub fn all(input: ProcTokenStream) -> ProcTokenStream {
             let config_content_and_span = readme_code_extractor_lib::public::config_content_and_span(&config_toml_content);
             let config_and_span = readme_code_extractor_lib::public::config_and_span(&config_content_and_span);
             let readme_loaded = readme_code_extractor_lib::public::readme_load(&config_and_span);
-            let mut readme_extracted = readme_code_extractor_lib::public::readme_extract(&readme_loaded);
+            let readme_extracted = readme_code_extractor_lib::public::readme_extract(&readme_loaded);
+
             let config = config_and_span.config();
 
-            let span = config_toml_content.span();
-
+            // @TODO use
             /*let _preamble_text= if let Some(preamble_text) = readme_extracted.preamble_text() {
                 quote_spanned! {span=>
                     //@TODO
@@ -90,94 +90,136 @@ pub fn all(input: ProcTokenStream) -> ProcTokenStream {
             } else {
                 TokenStream::new()
             };*/
-            let preamble_code = if let Some(preamble_code) = readme_extracted.preamble_code() {
+            // @TODO
+            /*let preamble_code = if let Some(preamble_code) = readme_extracted.preamble_code() {
                 quote_spanned! {span=>
                     //@TODO
                 }
             } else {
                 TokenStream::new()
-            };
+            };*/
 
-            let _/*prefix_before_preamble*/ = if config.prefix_before_preamble().len() > 0 {
-                token_stream_from_str!( config.prefix_before_preamble(), "Config::prefix_before_preamble")
+            let _/*start_prefix*/ = if config.start_prefix().len() > 0 {
+                token_stream_from_str!( config.start_prefix(), "Config::start_prefix")
             } else {
                 TokenStream::new()
             };//@TODO use
             //-----
 
-            let config_generated_len_per_block = 0;
             //--
-
-            let blocks = readme_extracted.non_preamble_blocks().collect::<Vec<_>>();
-
-            // @TODO apply backtick suffixes like "ignore" or "norun"
-            let mut code_blocks = Vec::with_capacity( blocks.len()/2 + 1);
-            code_blocks.extend( blocks.iter().filter_map( ReadmeBlock::code ) );
-
-            /*let mut code_block_contents = code_blocks.iter().map(|c| c.code());
-            let code_blocks_len_sum = code_block_contents.clone().map(|s| s.len() ).sum::<usize>();
-            */
-
-            //let mut 
-
-            for block in readme_extracted.non_preamble_blocks() {
-                if let Some(_text_block) = block.text() {
-                    //@TODO - if ever needed; then also adjust max_code_len above
-                }
-                if let Some(code_block) = block.code() {
-                    if config.prefix_before_preamble().len() > 0 {
-
-                    }
-                }
-            }
-
-            //....
-            let ordinary_code_suffix = if config.ordinary_code_suffix().len() > 0 {
-                token_stream_from_str!( config.ordinary_code_suffix(), "Config::ordinary_code_suffix")
-            } else {
-                TokenStream::new()
-            };
-
-            let s = "Hi";
+            /*let s = "Hi";
             let mut q = quote_spanned! {span=>
                 #s
             };
             let q2 = quote_spanned! {span=>
             };
             q.extend( q2);
-            q
+            q*/
+            impl_all(config, readme_extracted, config_toml_content.span())
         }
     })
-    .into()
 }
 
-fn impl_all(config: &dyn Config, span: Span) -> ProcTokenStream {
-    let (prefix_before_insert, (max_insert_len, after_insert)) =
+fn impl_all<'a>(
+    config: &dyn Config,
+    mut readme_extracted: impl ReadmeExtracted<'a>,
+    span: Span,
+) -> ProcTokenStream {
+    let (inserts, after_insert) = if let Some(headers) = config.ordinary_code_headers()
+        && let Some(inserts) = headers.inserts()
+    {
+        (inserts.inserts(), inserts.after_insert())
+    } else {
+        (&[][..], "")
+    };
+
+    let (prefix_before_insert, max_insert_len) =
         if let Some(headers) = config.ordinary_code_headers() {
             (
                 headers.prefix_before_insert(),
-                if let Some(inserts) = headers.inserts() {
-                    (
-                        inserts
-                            .inserts()
-                            .iter()
-                            .map(|&s| s.len())
-                            .max()
-                            .unwrap_or(0),
-                        "",
-                    )
-                } else {
-                    (0usize, "")
-                },
+                inserts.iter().map(|&s| s.len()).max().unwrap_or(0),
             )
         } else {
-            ("", (0usize, ""))
+            ("", 0usize)
         };
+    let ordinary_code_suffix = config.ordinary_code_suffix();
 
-    quote_spanned! {span=>
-        // @TODO
+    let config_generated_len_per_block = prefix_before_insert.len()
+        + max_insert_len
+        + after_insert.len()
+        + ordinary_code_suffix.len();
+
+    let blocks = readme_extracted.non_preamble_blocks().collect::<Vec<_>>();
+
+    // @TODO apply backtick suffixes like "ignore" or "norun"
+    let mut code_blocks = Vec::with_capacity(blocks.len() / 2 + 1);
+    code_blocks.extend(blocks.iter().filter_map(ReadmeBlock::code));
+
+    assert_eq!(
+        code_blocks.len(),
+        inserts.len(),
+        "Expecting number of blocks {} and number of inserts {} to be the same!",
+        code_blocks.len(),
+        inserts.len()
+    );
+
+    let max_code_block_len = code_blocks
+        .iter()
+        .map(|b| b.code().len())
+        .max()
+        .unwrap_or(0);
+    // @TODO triple_backtick_suffix
+    let mut code = String::with_capacity(config_generated_len_per_block + max_code_block_len);
+
+    // @TODO preamble etc.
+    let total_code_blocks_len = code_blocks.iter().map(|b| b.code().len()).sum::<usize>();
+    // We don't count the length of all inserts. Using the maximum is good enough.
+    let mut all_code =
+        String::with_capacity(total_code_blocks_len + max_code_block_len * code_blocks.len());
+
+    for (&block, &insert) in code_blocks.iter().zip(inserts.iter()) {
+        code.clear();
+        // @TODO triple_backtick_suffix
+        code.push_str(prefix_before_insert);
+        // @TODO insert
+        code.push_str(insert);
+        code.push_str(after_insert);
+        code.push_str(block.code());
+
+        let _ = token_stream_from_str!(
+            &code[prefix_before_insert.len() + insert.len() + after_insert.len()..],
+            "Code block"
+        );
+
+        code.push_str(ordinary_code_suffix);
+        let _ = token_stream_from_str!(
+            &code,
+            "Extended code block: Prefix, insert, after_insert, the original code and suffix."
+        );
+
+        all_code.push_str(&code);
     }
-    .into()
+
+    /*let mut code_block_contents = code_blocks.iter().map(|c| c.code());
+    let code_blocks_len_sum = code_block_contents.clone().map(|s| s.len() ).sum::<usize>();
+    */
+
+    /*for block in readme_extracted.non_preamble_blocks() {
+        if let Some(_text_block) = block.text() {
+            //@TODO - if ever needed; then also adjust max_code_len above
+        }
+        if let Some(code_block) = block.code() {
+            if config.start_prefix().len() > 0 {}
+        }
+    }*/
+
+    //....
+
+    let ts = token_stream_from_str!(
+        &all_code,
+        "All code blocks extended, and with start_prefix and final_suffix"
+    );
+    ts.into()
 }
 
 // @TODO remove
