@@ -99,14 +99,6 @@ pub fn all(input: ProcTokenStream) -> ProcTokenStream {
                 TokenStream::new()
             };*/
 
-            let _/*start_prefix*/ = if config.start_prefix().len() > 0 {
-                token_stream_from_str!( config.start_prefix(), "Config::start_prefix")
-            } else {
-                TokenStream::new()
-            };//@TODO use
-            //-----
-
-            //--
             /*let s = "Hi";
             let mut q = quote_spanned! {span=>
                 #s
@@ -174,8 +166,13 @@ fn impl_all<'a>(
     // @TODO preamble etc.
     let total_code_blocks_len = code_blocks.iter().map(|b| b.code().len()).sum::<usize>();
     // We don't count the length of all inserts. Using the maximum is good enough.
-    let mut all_code =
-        String::with_capacity(total_code_blocks_len + max_code_block_len * code_blocks.len());
+    let mut all_code = String::with_capacity(
+        config.start_prefix().len()
+            + total_code_blocks_len
+            + max_code_block_len * code_blocks.len()
+            + config.final_suffix().len(),
+    );
+    all_code.push_str(config.start_prefix());
 
     for (&block, &insert) in code_blocks.iter().zip(inserts.iter()) {
         code.clear();
@@ -199,6 +196,7 @@ fn impl_all<'a>(
 
         all_code.push_str(&code);
     }
+    all_code.push_str(config.final_suffix());
 
     let ts = token_stream_from_str!(
         &all_code,
