@@ -1,6 +1,6 @@
 [package]
 name = "readme-code-extractor-proc"
-version = "0.1.0"
+version = "0.0.1"
 
 edition = "2024"
 # Rust 1.88.0+ is required by readme-code-extractor-lib.
@@ -30,7 +30,7 @@ proc-macro-rules = "0.4.0"
 proc-macro2 = {version="1.0.60", features=["span-locations"] }
 
 # EXACT VERSION with = prefix
-readme-code-extractor-lib = {version="= 0.1.0", path="../readme-code-extractor-lib"}
+readme-code-extractor-lib = {version="= 0.0.1", path="../readme-code-extractor-lib"}
 
 quote = "1.0.26"
 serde = { version = "1.0", features = ["derive"] }

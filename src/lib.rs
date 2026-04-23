@@ -204,6 +204,7 @@ fn impl_all<'a>(
         &all_code,
         "All code blocks extended, and with start_prefix and final_suffix"
     );
+    // @TODO test if the span makes any difference - test with an error code
     quote_spanned! {span=>
         #ts
     }
