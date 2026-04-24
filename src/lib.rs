@@ -3,7 +3,7 @@
 use core::str::FromStr;
 use proc_macro::TokenStream as ProcTokenStream;
 use proc_macro_rules::rules;
-use proc_macro2::{Span, TokenStream};
+use proc_macro2::TokenStream;
 use quote::{quote, quote_spanned};
 use readme_code_extractor_lib::public::{Config, ConfigAndSpan, ReadmeBlock, ReadmeExtracted};
 
@@ -107,7 +107,7 @@ pub fn all(input: ProcTokenStream) -> ProcTokenStream {
             };
             q.extend( q2);
             q*/
-            impl_all(config, readme_extracted, config_toml_content.span())
+            impl_all(config, readme_extracted)
         }
     })
 }
@@ -115,7 +115,6 @@ pub fn all(input: ProcTokenStream) -> ProcTokenStream {
 fn impl_all<'a>(
     config: &dyn Config,
     mut readme_extracted: impl ReadmeExtracted<'a>,
-    span: Span,
 ) -> ProcTokenStream {
     let (has_inserts, inserts, inserts_iter_or_cycle, after_insert): (
         _,
