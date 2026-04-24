@@ -117,12 +117,22 @@ fn impl_all<'a>(
     mut readme_extracted: impl ReadmeExtracted<'a>,
     span: Span,
 ) -> ProcTokenStream {
-    let (inserts, after_insert) = if let Some(headers) = config.ordinary_code_headers()
+    let (has_inserts, inserts, inserts_iter_or_cycle, after_insert): (
+        _,
+        &[&str],
+        &mut dyn Iterator<Item = &&str>,
+        _,
+    ) = if let Some(headers) = config.ordinary_code_headers()
         && let Some(inserts) = headers.inserts()
     {
-        (inserts.inserts(), inserts.after_insert())
+        (
+            true,
+            inserts.inserts(),
+            &mut inserts.inserts().iter(),
+            inserts.after_insert(),
+        )
     } else {
-        (&[][..], "")
+        (false, &[], &mut [""].iter().cycle(), "")
     };
 
     let (prefix_before_insert, max_insert_len) =
@@ -146,14 +156,19 @@ fn impl_all<'a>(
     // @TODO apply backtick suffixes like "ignore" or "norun"
     let mut code_blocks = Vec::with_capacity(blocks.len() / 2 + 1);
     code_blocks.extend(blocks.iter().filter_map(ReadmeBlock::code));
+    //panic!("code_blocks: {}", code_blocks.len());
+    //
+    //panic!("code_blocks[0]: {}", code_blocks[0].code());
 
-    assert_eq!(
-        code_blocks.len(),
-        inserts.len(),
-        "Expecting number of blocks {} and number of inserts {} to be the same!",
-        code_blocks.len(),
-        inserts.len()
-    );
+    if has_inserts {
+        assert_eq!(
+            code_blocks.len(),
+            inserts.len(),
+            "Expecting number of blocks {} and number of inserts {} to be the same!",
+            code_blocks.len(),
+            inserts.len()
+        );
+    }
 
     let max_code_block_len = code_blocks
         .iter()
@@ -174,7 +189,7 @@ fn impl_all<'a>(
     );
     all_code.push_str(config.start_prefix());
 
-    for (&block, &insert) in code_blocks.iter().zip(inserts.iter()) {
+    for (&block, &insert) in code_blocks.iter().zip(inserts_iter_or_cycle) {
         code.clear();
         // @TODO triple_backtick_suffix
         code.push_str(prefix_before_insert);
@@ -202,12 +217,14 @@ fn impl_all<'a>(
         &all_code,
         "All code blocks extended, and with start_prefix and final_suffix"
     );
+    //panic!("Total generated code:\n{all_code}");
+
     // @TODO test if the span makes any difference - test with an error code
-    quote_spanned! {span=>
+    /*quote_spanned! {span=>
         #ts
     }
-    .into()
-    //ts.into()
+    .into()*/
+    ts.into()
 }
 
 // @TODO remove
