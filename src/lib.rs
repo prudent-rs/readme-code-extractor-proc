@@ -226,38 +226,6 @@ fn impl_all<'a>(
     ts.into()
 }
 
-// @TODO remove
-/*#[proc_macro]
-pub fn dbg_print_span_of(input: TokenStream) -> TokenStream {
-    use proc_macro::TokenTree;
-    for tree in input {
-        match tree {
-            TokenTree::Literal(literal) => {
-                let span = literal.span();
-                panic!(
-                    "span.local_file: {:?}, span.file: {:?}",
-                    span.local_file(),
-                    span.file()
-                )
-            }
-            _ => {}
-        }
-    }
-    panic!();
-    /*rules!(input.into() => {
-        ( $literal:literal ) => {
-
-            let span = literal.span();
-            if true {
-                //let local_file = span.local_file().map_or(|path| path.to_string(), "None".to_owned());
-                panic!( "span.local_file: {:?}, span.file: {:?}", span.local_file(), span.file())
-            }
-            quote! {}
-        }
-    }).into()*/
-}
-*/
-
 // Invoked by `readme_code_extractor::all_by_file`.
 /*
 #[doc(hidden)]
