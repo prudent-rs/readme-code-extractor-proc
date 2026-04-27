@@ -5,7 +5,9 @@ use proc_macro::TokenStream as ProcTokenStream;
 use proc_macro_rules::rules;
 use proc_macro2::TokenStream;
 use quote::{quote, quote_spanned};
-use readme_code_extractor_lib::public::{Config, ConfigAndSpan, ReadmeBlock, ReadmeExtracted};
+use readme_code_extractor_lib::public::{
+    Config, ConfigAndSpan, ConfigContentAndSpan, ReadmeBlock, ReadmeExtracted,
+};
 
 const _ASSERT_README_CODE_EXTRACTOR_LIB_VERSION: () = {
     if !readme_code_extractor_lib::is_exact_version(env!("CARGO_PKG_VERSION")) {
@@ -36,23 +38,6 @@ pub fn test_load_file(input: TokenStream) -> TokenStream {
     .into()
 }*/
 
-macro_rules! token_stream_from_str {
-    ($input_string:expr, $err_intended_result_description:expr) => {
-        ({
-            let input_string = $input_string;
-            let result = TokenStream::from_str(input_string);
-            if let Err(e) = result {
-                panic!(
-                    "readme-code-extractor-proc: Parsing {} failed. Unpaired or incorrect Rust \n
-                     tokens. Input:\n{}\nError: {}",
-                    $err_intended_result_description, input_string, e
-                );
-            }
-            result.unwrap()
-        })
-    };
-}
-
 /// Process all code blocks in the given input.
 ///
 /// The given input is
@@ -75,47 +60,64 @@ pub fn all(input: ProcTokenStream) -> ProcTokenStream {
     rules!(input.into() => {
         ( $config_toml_content:literal ) => {
 
-            let config_content_and_span = readme_code_extractor_lib::public::config_content_and_span(&config_toml_content);
-            let config_and_span = readme_code_extractor_lib::public::config_and_span(&config_content_and_span);
-            let readme_loaded = readme_code_extractor_lib::public::readme_load(&config_and_span);
-            let readme_extracted = readme_code_extractor_lib::public::readme_extract(&readme_loaded);
-
-            let config = config_and_span.config();
-
+            let cfg_content_and_span = readme_code_extractor_lib::public::config_content_and_span(
+                &config_toml_content);
             // @TODO use
-            /*let _preamble_text= if let Some(preamble_text) = readme_extracted.preamble_text() {
-                quote_spanned! {span=>
-                    //@TODO
-                }
-            } else {
-                TokenStream::new()
-            };*/
-            // @TODO
-            /*let preamble_code = if let Some(preamble_code) = readme_extracted.preamble_code() {
-                quote_spanned! {span=>
-                    //@TODO
-                }
-            } else {
-                TokenStream::new()
-            };*/
-
-            /*let s = "Hi";
-            let mut q = quote_spanned! {span=>
-                #s
-            };
-            let q2 = quote_spanned! {span=>
-            };
-            q.extend( q2);
-            q*/
-            impl_all(config, readme_extracted)
+            /*let _preamble_txt= if let Some(preamble_text) = readme_extracted.preamble_text() {};
+            let preamble_code = if let Some(preamble_code) = readme_extracted.preamble_code() {};
+            ...
+            q.extend( q2);*/
+            all_by_config_content_and_span(cfg_content_and_span)
         }
     })
+}
+
+/// Invoked by `readme_code_extractor::all_by_file`.
+#[proc_macro]
+pub fn all_by_file(input: ProcTokenStream) -> ProcTokenStream {
+    rules!(input.into() => {
+        ( $config_toml_content:literal ) => {
+
+            let cfg_content_and_span = readme_code_extractor_lib::public::config_content_and_span_by_file(
+                &config_toml_content);
+            all_by_config_content_and_span(cfg_content_and_span)
+        }
+    })
+}
+
+fn all_by_config_content_and_span(
+    cfg_content_and_span: impl ConfigContentAndSpan,
+) -> ProcTokenStream {
+    let config_and_span = readme_code_extractor_lib::public::config_and_span(&cfg_content_and_span);
+    let readme_loaded = readme_code_extractor_lib::public::readme_load(&config_and_span);
+    let readme_extracted = readme_code_extractor_lib::public::readme_extract(&readme_loaded);
+
+    let config = config_and_span.config();
+
+    impl_all(config, readme_extracted).into()
+}
+
+macro_rules! token_stream_from_str {
+    ($input_string:expr, $err_intended_result_description:expr) => {
+        ({
+            let input_string = $input_string;
+            let result = TokenStream::from_str(input_string);
+            if let Err(e) = result {
+                panic!(
+                    "readme-code-extractor-proc: Parsing {} failed. Unpaired or incorrect Rust \n
+                     tokens. Input:\n{}\nError: {}",
+                    $err_intended_result_description, input_string, e
+                );
+            }
+            result.unwrap()
+        })
+    };
 }
 
 fn impl_all<'a>(
     config: &dyn Config,
     mut readme_extracted: impl ReadmeExtracted<'a>,
-) -> ProcTokenStream {
+) -> TokenStream {
     let (has_inserts, inserts, inserts_iter_or_cycle, after_insert): (
         _,
         &[&str],
@@ -212,39 +214,11 @@ fn impl_all<'a>(
     }
     all_code.push_str(config.final_suffix());
 
-    let ts = token_stream_from_str!(
+    token_stream_from_str!(
         &all_code,
         "All code blocks extended, and with start_prefix and final_suffix"
-    );
-    //panic!("Total generated code:\n{all_code}");
-
-    // @TODO test if the span makes any difference - test with an error code
-    /*quote_spanned! {span=>
-        #ts
-    }
-    .into()*/
-    ts.into()
+    )
 }
-
-// Invoked by `readme_code_extractor::all_by_file`.
-/*
-#[doc(hidden)]
-#[proc_macro]
-pub fn all_by_file(input: TokenStream) -> TokenStream {
-    rules!(input.into() => {
-        ( $config_toml_file_relative_path:literal ) => {
-
-            let span = config_toml_file_relative_path.span();
-            let config_toml_content = readme_code_extractor_lib::load_file(
-                &config_toml_file_relative_path);
-
-            quote_spanned! {span=>
-                ::readme_code_extractor_proc::all!(#config_toml_content)
-            }
-        }
-    })
-    .into()
-}*/
 
 #[proc_macro]
 pub fn nth(_input: ProcTokenStream) -> ProcTokenStream {
