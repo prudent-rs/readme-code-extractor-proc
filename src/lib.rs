@@ -6,7 +6,7 @@ use proc_macro_rules::rules;
 use proc_macro2::TokenStream;
 use quote::{quote, quote_spanned};
 use readme_code_extractor_lib::public::{
-    Config, ConfigAndSpan, ConfigContentAndSpan, ReadmeBlock, ReadmeExtracted,
+    CodeBlock, Config, ConfigAndSpan, ConfigContentAndSpan, ReadmeBlock, ReadmeExtracted,
 };
 
 const _ASSERT_README_CODE_EXTRACTOR_LIB_VERSION: () = {
@@ -94,7 +94,7 @@ fn all_by_config_content_and_span(
 
     let config = config_and_span.config();
 
-    impl_all(config, readme_extracted).into()
+    impl_all(config, readme_extracted, |_, _, _| true).into()
 }
 
 macro_rules! token_stream_from_str {
@@ -114,15 +114,23 @@ macro_rules! token_stream_from_str {
     };
 }
 
-fn impl_all<'a>(
+/// Param code_block_filter is a closure that takes:
+/// - usize 0-based index of the code block being handled
+/// - &dyn [CodeBlock]
+/// - &str current code block's respective insert from
+///   [readme_code_extractor_lib::public::config::headers::Inserts::inserts] (or an empty string
+///   slice if there are no inserts).
+/// and returns `bool` whether to include the code block or not.
+fn impl_all<'a, F: Fn(usize, &dyn CodeBlock, &str) -> bool>(
     config: &dyn Config,
     mut readme_extracted: impl ReadmeExtracted<'a>,
+    code_block_filter: F,
 ) -> TokenStream {
     let (has_inserts, inserts, inserts_iter_or_cycle, after_insert): (
-        _,
+        bool,
         &[&str],
         &mut dyn Iterator<Item = &&str>,
-        _,
+        &str,
     ) = if let Some(headers) = config.ordinary_code_headers()
         && let Some(inserts) = headers.inserts()
     {
@@ -190,20 +198,27 @@ fn impl_all<'a>(
     );
     all_code.push_str(config.start_prefix());
 
-    for (&block, &insert) in code_blocks.iter().zip(inserts_iter_or_cycle) {
+    for (code_block_idx, (&block, &insert)) in
+        code_blocks.iter().zip(inserts_iter_or_cycle).enumerate()
+    {
+        if !code_block_filter(code_block_idx, block, insert) {
+            continue;
+        }
         code.clear();
         // @TODO triple_backtick_suffix
         code.push_str(prefix_before_insert);
         // @TODO insert
         code.push_str(insert);
         code.push_str(after_insert);
-        code.push_str(block.code());
 
-        let _ = token_stream_from_str!(
-            &code[prefix_before_insert.len() + insert.len() + after_insert.len()..],
-            "Code block"
-        );
+        let block_code = block.code();
+        // Verify that the pushed part is a well-formed Rust token stream, that is, all parens (..),
+        // brackets [..] and braces {..} are "balanced", string and char literals are well enclosed
+        // etc.
+        let _ = token_stream_from_str!(block_code, "Code block");
+        code.push_str(block_code);
 
+        // Verify a well-formed Rust token stream.
         code.push_str(ordinary_code_suffix);
         let _ = token_stream_from_str!(
             &code,
@@ -214,15 +229,37 @@ fn impl_all<'a>(
     }
     all_code.push_str(config.final_suffix());
 
+    // Verify a well-formed Rust token stream.
     token_stream_from_str!(
         &all_code,
         "All code blocks extended, and with start_prefix and final_suffix"
     )
 }
 
+fn usize_literal_value(literal: String) -> usize {
+    match literal.parse::<usize>() {
+        Ok(value) => value,
+        Err(err) => {
+            panic!("Expecting a non-negative (usize) index literal, but received: {err:?}")
+        }
+    }
+}
+
 #[proc_macro]
-pub fn nth(_input: ProcTokenStream) -> ProcTokenStream {
-    todo!()
+pub fn nth(input: ProcTokenStream) -> ProcTokenStream {
+    rules!(input.into() => {
+        ( $config_toml_content:literal @ $index:literal) => {
+
+            let cfg_content_and_span = readme_code_extractor_lib::public::config_content_and_span(
+                &config_toml_content);
+            // @TODO use
+            /*let _preamble_txt= if let Some(preamble_text) = readme_extracted.preamble_text() {};
+            let preamble_code = if let Some(preamble_code) = readme_extracted.preamble_code() {};
+            ...
+            q.extend( q2);*/
+            all_by_config_content_and_span(cfg_content_and_span)
+        }
+    })
 }
 
 /// This is like `readme_code_extractor::all_by_file``, except that `all_by_file` is a declarative
