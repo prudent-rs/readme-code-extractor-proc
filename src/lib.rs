@@ -37,7 +37,7 @@ pub fn test_load_file(input: TokenStream) -> TokenStream {
     })
     .into()
 }*/
-
+// ----
 /// Process all code blocks in the given input.
 ///
 /// The given input is
@@ -85,8 +85,47 @@ pub fn all_by_file(input: ProcTokenStream) -> ProcTokenStream {
     })
 }
 
+#[proc_macro]
+pub fn nth(input: ProcTokenStream) -> ProcTokenStream {
+    rules!(input.into() => {
+        ( $config_toml_content:literal @ $index:literal) => {
+
+            let cfg_content_and_span = readme_code_extractor_lib::public::config_content_and_span(
+                &config_toml_content);
+            let code_block_index = match index.to_string().parse::<usize>() {
+                Ok(value) => value,
+                Err(err) => {
+                    panic!("Expecting a non-negative (usize) index literal, but received: {err:?}")
+                }
+            };
+            // @TODO use
+            /*let _preamble_txt= if let Some(preamble_text) = readme_extracted.preamble_text() {};
+            let preamble_code = if let Some(preamble_code) = readme_extracted.preamble_code() {};
+            ...
+            q.extend( q2);*/
+            nth_by_config_content_and_span(cfg_content_and_span, code_block_index)
+        }
+    })
+}
+// ----
+
 fn all_by_config_content_and_span(
     cfg_content_and_span: impl ConfigContentAndSpan,
+) -> ProcTokenStream {
+    selected_by_config_content_and_span(cfg_content_and_span, |_, _, _| true)
+}
+
+fn nth_by_config_content_and_span(
+    cfg_content_and_span: impl ConfigContentAndSpan,
+    code_block_index: usize,
+) -> ProcTokenStream {
+    selected_by_config_content_and_span(cfg_content_and_span, |idx, _, _| idx == code_block_index)
+}
+// ----
+
+fn selected_by_config_content_and_span<F: Fn(usize, &dyn CodeBlock, &str) -> bool>(
+    cfg_content_and_span: impl ConfigContentAndSpan,
+    code_block_filter: F,
 ) -> ProcTokenStream {
     let config_and_span = readme_code_extractor_lib::public::config_and_span(&cfg_content_and_span);
     let readme_loaded = readme_code_extractor_lib::public::readme_load(&config_and_span);
@@ -94,7 +133,7 @@ fn all_by_config_content_and_span(
 
     let config = config_and_span.config();
 
-    impl_all(config, readme_extracted, |_, _, _| true).into()
+    impl_filtered(config, readme_extracted, code_block_filter).into()
 }
 
 macro_rules! token_stream_from_str {
@@ -121,7 +160,7 @@ macro_rules! token_stream_from_str {
 ///   [readme_code_extractor_lib::public::config::headers::Inserts::inserts] (or an empty string
 ///   slice if there are no inserts).
 /// and returns `bool` whether to include the code block or not.
-fn impl_all<'a, F: Fn(usize, &dyn CodeBlock, &str) -> bool>(
+fn impl_filtered<'a, F: Fn(usize, &dyn CodeBlock, &str) -> bool>(
     config: &dyn Config,
     mut readme_extracted: impl ReadmeExtracted<'a>,
     code_block_filter: F,
@@ -234,32 +273,6 @@ fn impl_all<'a, F: Fn(usize, &dyn CodeBlock, &str) -> bool>(
         &all_code,
         "All code blocks extended, and with start_prefix and final_suffix"
     )
-}
-
-fn usize_literal_value(literal: String) -> usize {
-    match literal.parse::<usize>() {
-        Ok(value) => value,
-        Err(err) => {
-            panic!("Expecting a non-negative (usize) index literal, but received: {err:?}")
-        }
-    }
-}
-
-#[proc_macro]
-pub fn nth(input: ProcTokenStream) -> ProcTokenStream {
-    rules!(input.into() => {
-        ( $config_toml_content:literal @ $index:literal) => {
-
-            let cfg_content_and_span = readme_code_extractor_lib::public::config_content_and_span(
-                &config_toml_content);
-            // @TODO use
-            /*let _preamble_txt= if let Some(preamble_text) = readme_extracted.preamble_text() {};
-            let preamble_code = if let Some(preamble_code) = readme_extracted.preamble_code() {};
-            ...
-            q.extend( q2);*/
-            all_by_config_content_and_span(cfg_content_and_span)
-        }
-    })
 }
 
 /// This is like `readme_code_extractor::all_by_file``, except that `all_by_file` is a declarative
