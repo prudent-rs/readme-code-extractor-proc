@@ -4,10 +4,15 @@ use core::str::FromStr;
 use proc_macro::TokenStream as ProcTokenStream;
 use proc_macro_rules::rules;
 use proc_macro2::TokenStream;
+use proc_macro2_diagnostics::Diagnostic;
+use proc_macro2_diagnostics::SpanDiagnosticExt as _;
 use quote::{quote, quote_spanned};
 use readme_code_extractor_lib::public::{
     CodeBlock, Config, ConfigAndSpan, ConfigContentAndSpan, ReadmeBlock, ReadmeExtracted,
 };
+use syn::spanned::Spanned as _;
+
+type MacroResult<T> = Result<T, Diagnostic>;
 
 const _ASSERT_README_CODE_EXTRACTOR_LIB_VERSION: () = {
     if !readme_code_extractor_lib::is_exact_version(env!("CARGO_PKG_VERSION")) {
@@ -78,9 +83,15 @@ pub fn all_by_file(input: ProcTokenStream) -> ProcTokenStream {
     rules!(input.into() => {
         ( $config_toml_content:literal ) => {
 
-            let cfg_content_and_span = readme_code_extractor_lib::public::config_content_and_span_by_file(
+            let (cfg_content_and_span, toml_config_file_path) = readme_code_extractor_lib::public::config_content_and_span_by_file(
                 &config_toml_content);
-            all_by_config_content_and_span(cfg_content_and_span)
+
+            let toml_config_file_path = toml_config_file_path.as_ref();
+            let prefix_stream = format!("const _: &str = ::std::include_str!(\"{toml_config_file_path}\");\n");
+
+            let prefix_stream = TokenStream::from_str(&prefix_stream).expect("TODO");
+
+            selected_by_config_content_and_span(prefix_stream, cfg_content_and_span, |_, _, _| true)
         }
     })
 }
@@ -112,18 +123,21 @@ pub fn nth(input: ProcTokenStream) -> ProcTokenStream {
 fn all_by_config_content_and_span(
     cfg_content_and_span: impl ConfigContentAndSpan,
 ) -> ProcTokenStream {
-    selected_by_config_content_and_span(cfg_content_and_span, |_, _, _| true)
+    selected_by_config_content_and_span(TokenStream::new(), cfg_content_and_span, |_, _, _| true)
 }
 
 fn nth_by_config_content_and_span(
     cfg_content_and_span: impl ConfigContentAndSpan,
     code_block_index: usize,
 ) -> ProcTokenStream {
-    selected_by_config_content_and_span(cfg_content_and_span, |idx, _, _| idx == code_block_index)
+    selected_by_config_content_and_span(TokenStream::new(), cfg_content_and_span, |idx, _, _| {
+        idx == code_block_index
+    })
 }
 // ----
 
 fn selected_by_config_content_and_span<F: Fn(usize, &dyn CodeBlock, &str) -> bool>(
+    prefix_stream: TokenStream,
     cfg_content_and_span: impl ConfigContentAndSpan,
     code_block_filter: F,
 ) -> ProcTokenStream {
@@ -133,7 +147,7 @@ fn selected_by_config_content_and_span<F: Fn(usize, &dyn CodeBlock, &str) -> boo
 
     let config = config_and_span.config();
 
-    impl_filtered(config, readme_extracted, code_block_filter).into()
+    impl_filtered(prefix_stream, config, readme_extracted, code_block_filter).into()
 }
 
 macro_rules! token_stream_from_str {
@@ -161,6 +175,7 @@ macro_rules! token_stream_from_str {
 ///   slice if there are no inserts).
 /// and returns `bool` whether to include the code block or not.
 fn impl_filtered<'a, F: Fn(usize, &dyn CodeBlock, &str) -> bool>(
+    mut prefix_stream: TokenStream,
     config: &dyn Config,
     mut readme_extracted: impl ReadmeExtracted<'a>,
     code_block_filter: F,
@@ -208,15 +223,12 @@ fn impl_filtered<'a, F: Fn(usize, &dyn CodeBlock, &str) -> bool>(
     //
     //panic!("code_blocks[0]: {}", code_blocks[0].code());
 
-    if has_inserts {
-        assert_eq!(
-            code_blocks.len(),
-            inserts.len(),
-            "Expecting number of blocks {} and number of inserts {} to be the same!",
-            code_blocks.len(),
-            inserts.len()
-        );
-    }
+    assert!(
+        !has_inserts || code_blocks.len() == inserts.len(),
+        "Expecting number of blocks {} and number of inserts {} to be the same!",
+        code_blocks.len(),
+        inserts.len()
+    );
 
     let max_code_block_len = code_blocks
         .iter()
@@ -228,13 +240,21 @@ fn impl_filtered<'a, F: Fn(usize, &dyn CodeBlock, &str) -> bool>(
 
     // @TODO preamble etc.
     let total_code_blocks_len = code_blocks.iter().map(|b| b.code().len()).sum::<usize>();
+
+    let markdown_file_local_path = readme_extracted.markdown_file_local_path();
+    let code_to_load_markdown_file =
+        format!("const _: &str = ::std::include_str!(\"{markdown_file_local_path}\");\n");
+
     // We don't count the length of all inserts. Using the maximum is good enough.
     let mut all_code = String::with_capacity(
-        config.start_prefix().len()
+        code_to_load_markdown_file.len()
+            + config.start_prefix().len()
             + total_code_blocks_len
             + max_code_block_len * code_blocks.len()
             + config.final_suffix().len(),
     );
+
+    all_code.push_str(&code_to_load_markdown_file);
     all_code.push_str(config.start_prefix());
 
     for (code_block_idx, (&block, &insert)) in
@@ -269,10 +289,12 @@ fn impl_filtered<'a, F: Fn(usize, &dyn CodeBlock, &str) -> bool>(
     all_code.push_str(config.final_suffix());
 
     // Verify a well-formed Rust token stream.
-    token_stream_from_str!(
+    let main_token_stream = token_stream_from_str!(
         &all_code,
         "All code blocks extended, and with start_prefix and final_suffix"
-    )
+    );
+    prefix_stream.extend(core::iter::once(main_token_stream));
+    prefix_stream
 }
 
 /// This is like `readme_code_extractor::all_by_file``, except that `all_by_file` is a declarative
