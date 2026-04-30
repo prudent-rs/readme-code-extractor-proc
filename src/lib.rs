@@ -3,12 +3,12 @@
 use core::str::FromStr;
 use proc_macro::TokenStream as ProcTokenStream;
 use proc_macro_rules::rules;
-use proc_macro2::TokenStream;
+use proc_macro2::{Literal, Span, TokenStream};
 use proc_macro2_diagnostics::SpanDiagnosticExt as _;
 use quote::quote;
 use readme_code_extractor_lib::public::{
-    CodeBlock, Config, ConfigAndSpan, ConfigContentAndSpan, MacroResult, ReadmeBlock,
-    ReadmeExtracted,
+    CodeBlock, Config, ConfigAndSpan, ConfigContentAndSpan, MacroResult, OwnedStringSlice,
+    ReadmeBlock, ReadmeExtracted,
 };
 use readme_code_extractor_lib::{ok_or_err, true_or_err};
 
@@ -27,7 +27,7 @@ const _ASSERT_README_CODE_EXTRACTOR_LIB_VERSION: () = {
 };
 // ----
 
-/// Process all code blocks in the given input.
+/// Process (adjust and pass through) all code blocks in the given input.
 ///
 /// The given input is
 /// - specified as an ordinary, non-raw, string literals `"..."`. Ordinary string literals
@@ -68,7 +68,10 @@ fn all_impl(input: TokenStream) -> MacroStreamResult {
     })
 }
 
-/// Invoked by `readme_code_extractor::all_by_file`.
+/// Process (adjust and pass through) all code blocks. Configuration is in a (TOML) file, its file
+/// path is in the input.
+///
+/// See also [all].
 #[proc_macro]
 pub fn all_by_file(input: ProcTokenStream) -> ProcTokenStream {
     match all_by_file_impl(input.into()) {
@@ -77,28 +80,40 @@ pub fn all_by_file(input: ProcTokenStream) -> ProcTokenStream {
     }
 }
 
+/// Generate code that loads content of the given file to a string slice constant. That ensures the
+/// user's code is re-built if the file gets modified.
+fn load_file_to_const(span: &Span, toml_config_file_path: &OwnedStringSlice) -> MacroStreamResult {
+    let toml_config_file_path = toml_config_file_path.as_ref();
+    let prefix_stream =
+        format!("const _: &str = ::std::include_str!(\"{toml_config_file_path}\");\n");
+
+    Ok(ok_or_err!(
+        span,
+        TokenStream::from_str(&prefix_stream),
+        "The given TOML config file path is not well formed, or somehow the following \
+            couldn't be parsed:\n{}\nError:\n{:?}",
+        prefix_stream
+    ))
+}
+
 fn all_by_file_impl(input: TokenStream) -> MacroStreamResult {
     rules!(input => {
-        ( $config_toml_content:literal ) => {
+        ( $config_toml_file_path:literal ) => {
 
             let (cfg_content_and_span, toml_config_file_path) = readme_code_extractor_lib::public::config_content_and_span_by_file(
-                &config_toml_content)?;
+                &config_toml_file_path)?;
 
-            let toml_config_file_path = toml_config_file_path.as_ref();
-            let prefix_stream = format!("const _: &str = ::std::include_str!(\"{toml_config_file_path}\");\n");
-
-            let prefix_stream = ok_or_err!(
-                cfg_content_and_span.span(),
-                TokenStream::from_str(&prefix_stream),
-                "The given TOML config file path is not well formed, or somehow the following \
-                 couldn't be parsed:\n{}\nError:\n{:?}", prefix_stream
-            );
+            let prefix_stream = load_file_to_const(
+                cfg_content_and_span.span(), &toml_config_file_path)?;
 
             all_by_config_content_and_span(prefix_stream, &cfg_content_and_span)
         }
     })
 }
 
+/// Process (adjust and pass through) only n-th code block from the given input.
+///
+/// Configuration is in the first input. 0-based index is in the second input.
 #[proc_macro]
 pub fn nth(input: ProcTokenStream) -> ProcTokenStream {
     match nth_impl(input.into()) {
@@ -107,23 +122,62 @@ pub fn nth(input: ProcTokenStream) -> ProcTokenStream {
     }
 }
 
+fn code_block_index(index: &Literal) -> MacroResult<usize> {
+    let index_string = index.to_string();
+    Ok(ok_or_err!(
+        index.span(),
+        index_string.parse::<usize>(),
+        "Expecting a non-negative (usize) index literal, but received: {}. Error: {:?}",
+        index_string
+    ))
+}
+
 fn nth_impl(input: TokenStream) -> MacroStreamResult {
     rules!(input => {
         ( $config_toml_content:literal @ $index:literal) => {
 
             let cfg_content_and_span = readme_code_extractor_lib::public::config_content_and_span(
                 &config_toml_content)?;
-            let code_block_index = ok_or_err!(
-                cfg_content_and_span.span(),
-                index.to_string().parse::<usize>(),
-                "Expecting a non-negative (usize) index literal, but received: {:?}"
-            );
+            let code_block_index = code_block_index(&index)?;
             // @TODO use
             /*let _preamble_txt= if let Some(preamble_text) = readme_extracted.preamble_text() {};
             let preamble_code = if let Some(preamble_code) = readme_extracted.preamble_code() {};
             ...
             q.extend( q2);*/
             nth_by_config_content_and_span(TokenStream::new(), &cfg_content_and_span, code_block_index)
+        }
+    })
+}
+
+/// Process (adjust and pass through) only n-th code block from the given input.
+///
+/// Configuration is in a (TOML) file, its file path is in the first input. 0-based index is in the
+/// second input.
+#[proc_macro]
+pub fn nth_by_file(input: ProcTokenStream) -> ProcTokenStream {
+    match nth_by_file_impl(input.into()) {
+        Ok(input) => input.into(),
+        Err(diag) => diag.emit_as_expr_tokens().into(),
+    }
+}
+
+fn nth_by_file_impl(input: TokenStream) -> MacroStreamResult {
+    rules!(input => {
+        ( $config_toml_file_path:literal @ $index:literal) => {
+
+            let (cfg_content_and_span, toml_config_file_path) = readme_code_extractor_lib::public::config_content_and_span_by_file(
+                &config_toml_file_path)?;
+
+            let prefix_stream = load_file_to_const(
+                cfg_content_and_span.span(), &toml_config_file_path)?;
+
+            let code_block_index = code_block_index(&index)?;
+            // @TODO use
+            /*let _preamble_txt= if let Some(preamble_text) = readme_extracted.preamble_text() {};
+            let preamble_code = if let Some(preamble_code) = readme_extracted.preamble_code() {};
+            ...
+            q.extend( q2);*/
+            nth_by_config_content_and_span(prefix_stream, &cfg_content_and_span, code_block_index)
         }
     })
 }
