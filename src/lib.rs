@@ -67,6 +67,7 @@ fn all_impl(input: TokenStream) -> MacroStreamResult {
         }
     })
 }
+// ----
 
 /// Process (adjust and pass through) all code blocks. Configuration is in a (TOML) file, its file
 /// path is in the input.
@@ -110,6 +111,7 @@ fn all_by_file_impl(input: TokenStream) -> MacroStreamResult {
         }
     })
 }
+// ----
 
 /// Process (adjust and pass through) only n-th code block from the given input.
 ///
@@ -148,6 +150,7 @@ fn nth_impl(input: TokenStream) -> MacroStreamResult {
         }
     })
 }
+// ----
 
 /// Process (adjust and pass through) only n-th code block from the given input.
 ///
@@ -182,6 +185,36 @@ fn nth_by_file_impl(input: TokenStream) -> MacroStreamResult {
     })
 }
 // ----
+/*
+/// Process (adjust and pass through) only code block with a given tag.
+///
+/// Configuration is in the first input. Tag is in the second input.
+#[proc_macro]
+pub fn tag(input: ProcTokenStream) -> ProcTokenStream {
+    match nth_impl(input.into()) {
+        Ok(input) => input.into(),
+        Err(diag) => diag.emit_as_expr_tokens().into(),
+    }
+}
+
+fn tag_impl(input: TokenStream) -> MacroStreamResult {
+    rules!(input => {
+        ( $config_toml_content:literal @ $tag:literal) => {
+
+            let cfg_content_and_span = readme_code_extractor_lib::public::config_content_and_span(
+                &config_toml_content)?;
+            
+            let tag = readme_code_extractor_lib::public::string_literal_content(&tag);
+            // @TODO use
+            /*let _preamble_txt= if let Some(preamble_text) = readme_extracted.preamble_text() {};
+            let preamble_code = if let Some(preamble_code) = readme_extracted.preamble_code() {};
+            ...
+            q.extend( q2);*/
+            tag_by_config_content_and_span(TokenStream::new(), &cfg_content_and_span, &tag)
+        }
+    })
+}*/
+// ----
 
 fn all_by_config_content_and_span(
     prefix_stream: TokenStream,
@@ -211,6 +244,28 @@ fn nth_by_config_content_and_span(
         },
     )
 }
+
+/*fn tag_by_config_content_and_span(
+    prefix_stream: TokenStream,
+    cfg_content_and_span: &impl ConfigContentAndSpan,
+    tag: &OwnedStringSlice
+) -> MacroStreamResult {
+    let span = cfg_content_and_span.span();
+    selected_by_config_content_and_span(
+        prefix_stream,
+        cfg_content_and_span,
+        |code_blocks, idx, _, _| {
+            let _ = span;
+            true_or_err!(
+                span,
+                idx < code_blocks.len(),
+                "The received index {idx} is non-negative (usize), but it's outside of {} code blocks.",
+                code_blocks.len()
+            );
+            Ok(idx == code_block_index)
+        },
+    )
+}*/
 // ----
 
 fn selected_by_config_content_and_span<F>(
