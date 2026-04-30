@@ -4,14 +4,11 @@ use core::str::FromStr;
 use proc_macro::TokenStream as ProcTokenStream;
 use proc_macro_rules::rules;
 use proc_macro2::TokenStream;
-use proc_macro2_diagnostics::Diagnostic;
-use proc_macro2_diagnostics::SpanDiagnosticExt as _;
-use quote::{quote, quote_spanned};
+use quote::quote;
 use readme_code_extractor_lib::public::{
     CodeBlock, Config, ConfigAndSpan, ConfigContentAndSpan, MacroResult, ReadmeBlock,
     ReadmeExtracted,
 };
-use syn::spanned::Spanned as _;
 
 type MacroStreamResult = MacroResult<TokenStream>;
 
