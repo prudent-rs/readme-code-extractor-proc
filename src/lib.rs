@@ -249,9 +249,9 @@ macro_rules! token_stream_from_str {
 /// Param code_block_filter is a closure that takes:
 /// - usize 0-based index of the code block being handled
 /// - &dyn [CodeBlock]
-/// - &str current code block's respective insert from
-///   [readme_code_extractor_lib::public::config::headers::Inserts::inserts] (or an empty string
-///   slice if there are no inserts).
+/// - &str current code block's respective tag from
+///   [readme_code_extractor_lib::public::config::headers::Tags::tags] (or an empty string
+///   slice if there are no tags).
 /// and returns `bool` whether to include the code block or not.
 fn impl_filtered<'a, F>(
     mut prefix_stream: TokenStream,
@@ -262,33 +262,27 @@ fn impl_filtered<'a, F>(
 where
     F: Fn(&Vec<&dyn CodeBlock>, usize, &dyn CodeBlock, &str) -> MacroResult<bool>,
 {
-    let (has_inserts, inserts, inserts_iter_or_cycle, after_insert): (
+    let (has_tags, tags, tags_iter_or_cycle, after_tag): (
         bool,
         &[&str],
         &mut dyn Iterator<Item = &&str>,
         &str,
     ) = if let Some(headers) = config.ordinary_code_headers()
-        && let Some(inserts) = headers.inserts()
+        && let Some(tags) = headers.tags()
     {
-        (
-            true,
-            inserts.inserts(),
-            &mut inserts.inserts().iter(),
-            inserts.after_insert(),
-        )
+        (true, tags.tags(), &mut tags.tags().iter(), tags.after_tag())
     } else {
         (false, &[], &mut [""].iter().cycle(), "")
     };
 
-    let (prefix_before_insert, max_insert_len) =
-        if let Some(headers) = config.ordinary_code_headers() {
-            (
-                headers.prefix_before_insert(),
-                inserts.iter().map(|&s| s.len()).max().unwrap_or(0),
-            )
-        } else {
-            ("", 0usize)
-        };
+    let (prefix_before_tag, max_tag_len) = if let Some(headers) = config.ordinary_code_headers() {
+        (
+            headers.prefix_before_tag(),
+            tags.iter().map(|&s| s.len()).max().unwrap_or(0),
+        )
+    } else {
+        ("", 0usize)
+    };
     let ordinary_code_suffix = config.ordinary_code_suffix();
 
     let blocks = readme_extracted
@@ -301,10 +295,10 @@ where
 
     true_or_err!(
         readme_extracted.span(),
-        !has_inserts || code_blocks.len() == inserts.len(),
-        "Expecting number of blocks {} and number of inserts {} to be the same!",
+        !has_tags || code_blocks.len() == tags.len(),
+        "Expecting number of blocks {} and number of tags {} to be the same!",
         code_blocks.len(),
-        inserts.len()
+        tags.len()
     );
 
     let max_code_block_len = code_blocks
@@ -314,11 +308,9 @@ where
         .unwrap_or(0);
 
     let mut generated_per_block = {
-        let config_generated_len_per_block = prefix_before_insert.len()
-            + max_insert_len
-            + after_insert.len()
-            + ordinary_code_suffix.len();
-        // @TODO triple_backtick_suffix
+        let config_generated_len_per_block =
+            prefix_before_tag.len() + max_tag_len + after_tag.len() + ordinary_code_suffix.len();
+        // @TODO triple_backtick_suffix- BUT only if we pass it through
 
         String::with_capacity(config_generated_len_per_block + max_code_block_len)
     };
@@ -330,7 +322,7 @@ where
     let code_to_load_markdown_file =
         format!("const _: &str = ::std::include_str!(\"{markdown_file_local_path}\");\n");
 
-    // We don't count the length of all inserts. Using the maximum is good enough.
+    // We don't count the length of all tags. Using the maximum is good enough.
     let mut generated_all = String::with_capacity(
         code_to_load_markdown_file.len()
             + config.start_prefix().len()
@@ -342,18 +334,15 @@ where
     generated_all.push_str(&code_to_load_markdown_file);
     generated_all.push_str(config.start_prefix());
 
-    for (code_block_idx, (&block, &insert)) in
-        code_blocks.iter().zip(inserts_iter_or_cycle).enumerate()
-    {
-        if !code_block_filter(&code_blocks, code_block_idx, block, insert)? {
+    for (code_block_idx, (&block, &tag)) in code_blocks.iter().zip(tags_iter_or_cycle).enumerate() {
+        if !code_block_filter(&code_blocks, code_block_idx, block, tag)? {
             continue;
         }
         generated_per_block.clear();
         // @TODO triple_backtick_suffix
-        generated_per_block.push_str(prefix_before_insert);
-        // @TODO insert
-        generated_per_block.push_str(insert);
-        generated_per_block.push_str(after_insert);
+        generated_per_block.push_str(prefix_before_tag);
+        generated_per_block.push_str(tag);
+        generated_per_block.push_str(after_tag);
 
         let block_code = block.code();
         // Verify that the pushed part is a well-formed Rust token stream, that is, all parens (..),
@@ -367,7 +356,7 @@ where
         let _ = token_stream_from_str!(
             readme_extracted.span(),
             &generated_per_block,
-            "Extended code block: Prefix, insert, after_insert, the original code and suffix."
+            "Extended code block: Prefix, tag, after_tag, the original code and suffix."
         );
 
         generated_all.push_str(&generated_per_block);
