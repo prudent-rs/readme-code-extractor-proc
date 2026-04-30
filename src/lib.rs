@@ -63,7 +63,7 @@ fn all_impl(input: TokenStream) -> MacroStreamResult {
             let preamble_code = if let Some(preamble_code) = readme_extracted.preamble_code() {};
             ...
             q.extend( q2);*/
-            all_by_config_content_and_span(TokenStream::new(), cfg_content_and_span)
+            all_by_config_content_and_span(TokenStream::new(), &cfg_content_and_span)
         }
     })
 }
@@ -94,7 +94,7 @@ fn all_by_file_impl(input: TokenStream) -> MacroStreamResult {
                  couldn't be parsed:\n{}\nError:\n{:?}", prefix_stream
             );
 
-            all_by_config_content_and_span(prefix_stream, cfg_content_and_span)
+            all_by_config_content_and_span(prefix_stream, &cfg_content_and_span)
         }
     })
 }
@@ -124,7 +124,7 @@ fn nth_impl(input: TokenStream) -> MacroStreamResult {
             let preamble_code = if let Some(preamble_code) = readme_extracted.preamble_code() {};
             ...
             q.extend( q2);*/
-            nth_by_config_content_and_span(TokenStream::new(), cfg_content_and_span, code_block_index)
+            nth_by_config_content_and_span(TokenStream::new(), &cfg_content_and_span, code_block_index)
         }
     })
 }
@@ -132,29 +132,43 @@ fn nth_impl(input: TokenStream) -> MacroStreamResult {
 
 fn all_by_config_content_and_span(
     prefix_stream: TokenStream,
-    cfg_content_and_span: impl ConfigContentAndSpan,
+    cfg_content_and_span: &impl ConfigContentAndSpan,
 ) -> MacroStreamResult {
-    selected_by_config_content_and_span(prefix_stream, cfg_content_and_span, |_, _, _| true)
+    selected_by_config_content_and_span(prefix_stream, cfg_content_and_span, |_, _, _, _| Ok(true))
 }
 
 fn nth_by_config_content_and_span(
     prefix_stream: TokenStream,
-    cfg_content_and_span: impl ConfigContentAndSpan,
+    cfg_content_and_span: &impl ConfigContentAndSpan,
     code_block_index: usize,
 ) -> MacroStreamResult {
-    selected_by_config_content_and_span(prefix_stream, cfg_content_and_span, |idx, _, _| {
-        idx == code_block_index
-    })
+    let span = cfg_content_and_span.span();
+    selected_by_config_content_and_span(
+        prefix_stream,
+        cfg_content_and_span,
+        |code_blocks, idx, _, _| {
+            let _ = span;
+            true_or_err!(
+                span,
+                idx < code_blocks.len(),
+                "The received index {idx} is non-negative (usize), but it's outside of {} code blocks.",
+                code_blocks.len()
+            );
+            Ok(idx == code_block_index)
+        },
+    )
 }
 // ----
 
-fn selected_by_config_content_and_span<F: Fn(usize, &dyn CodeBlock, &str) -> bool>(
+fn selected_by_config_content_and_span<F>(
     prefix_stream: TokenStream,
-    cfg_content_and_span: impl ConfigContentAndSpan,
+    cfg_content_and_span: &impl ConfigContentAndSpan,
     code_block_filter: F,
-) -> MacroStreamResult {
-    let config_and_span =
-        readme_code_extractor_lib::public::config_and_span(&cfg_content_and_span)?;
+) -> MacroStreamResult
+where
+    F: Fn(&Vec<&dyn CodeBlock>, usize, &dyn CodeBlock, &str) -> MacroResult<bool>,
+{
+    let config_and_span = readme_code_extractor_lib::public::config_and_span(cfg_content_and_span)?;
     let readme_loaded = readme_code_extractor_lib::public::readme_load(&config_and_span)?;
     let readme_extracted = readme_code_extractor_lib::public::readme_extract(&readme_loaded)?;
 
@@ -187,12 +201,15 @@ macro_rules! token_stream_from_str {
 ///   [readme_code_extractor_lib::public::config::headers::Inserts::inserts] (or an empty string
 ///   slice if there are no inserts).
 /// and returns `bool` whether to include the code block or not.
-fn impl_filtered<'a, F: Fn(usize, &dyn CodeBlock, &str) -> bool>(
+fn impl_filtered<'a, F>(
     mut prefix_stream: TokenStream,
     config: &dyn Config,
     mut readme_extracted: impl ReadmeExtracted<'a>,
     code_block_filter: F,
-) -> MacroStreamResult {
+) -> MacroStreamResult
+where
+    F: Fn(&Vec<&dyn CodeBlock>, usize, &dyn CodeBlock, &str) -> MacroResult<bool>,
+{
     let (has_inserts, inserts, inserts_iter_or_cycle, after_insert): (
         bool,
         &[&str],
@@ -276,7 +293,7 @@ fn impl_filtered<'a, F: Fn(usize, &dyn CodeBlock, &str) -> bool>(
     for (code_block_idx, (&block, &insert)) in
         code_blocks.iter().zip(inserts_iter_or_cycle).enumerate()
     {
-        if !code_block_filter(code_block_idx, block, insert) {
+        if !code_block_filter(&code_blocks, code_block_idx, block, insert)? {
             continue;
         }
         code.clear();
