@@ -4,15 +4,15 @@ use core::str::FromStr;
 use proc_macro::TokenStream as ProcTokenStream;
 use proc_macro_rules::rules;
 use proc_macro2::{Literal, Span, TokenStream};
-use proc_macro2_diagnostics::SpanDiagnosticExt as _;
 use quote::quote;
 use readme_code_extractor_lib::public::{
-    CodeBlock, Config, ConfigAndSpan, ConfigContentAndSpan, MacroResult, OwnedStringSlice,
-    ReadmeBlock, ReadmeExtracted,
+    CodeBlock, Config, ConfigAndSpan, ConfigContentAndSpan, MacroDeepResult, MacroResult,
+    MacroResultDeepExt, OwnedStringSlice, ReadmeBlock, ReadmeExtracted,
 };
-use readme_code_extractor_lib::{ok_or_err, true_or_err};
+use readme_code_extractor_lib::{ok_or_fail, ok_or_fail_deep, true_or_fail_deep};
 
 type MacroStreamResult = MacroResult<TokenStream>;
+type MacroStreamDeepResult = MacroDeepResult<TokenStream>;
 
 const _ASSERT_README_CODE_EXTRACTOR_LIB_VERSION: () = {
     if !readme_code_extractor_lib::is_exact_version(env!("CARGO_PKG_VERSION")) {
@@ -83,12 +83,12 @@ pub fn all_by_file(input: ProcTokenStream) -> ProcTokenStream {
 
 /// Generate code that loads content of the given file to a string slice constant. That ensures the
 /// user's code is re-built if the file gets modified.
-fn load_file_to_const(span: &Span, toml_config_file_path: &OwnedStringSlice) -> MacroStreamResult {
+fn load_file_to_const(span: Span, toml_config_file_path: &OwnedStringSlice) -> MacroStreamResult {
     let toml_config_file_path = toml_config_file_path.as_ref();
     let prefix_stream =
         format!("const _: &str = ::std::include_str!(\"{toml_config_file_path}\");\n");
 
-    Ok(ok_or_err!(
+    Ok(ok_or_fail!(
         span,
         TokenStream::from_str(&prefix_stream),
         "The given TOML config file path is not well formed, or somehow the following \
@@ -126,7 +126,7 @@ pub fn nth(input: ProcTokenStream) -> ProcTokenStream {
 
 fn code_block_index(index: &Literal) -> MacroResult<usize> {
     let index_string = index.to_string();
-    Ok(ok_or_err!(
+    Ok(ok_or_fail!(
         index.span(),
         index_string.parse::<usize>(),
         "Expecting a non-negative (usize) index literal, but received: {}. Error: {:?}",
@@ -203,7 +203,7 @@ fn tag_impl(input: TokenStream) -> MacroStreamResult {
 
             let cfg_content_and_span = readme_code_extractor_lib::public::config_content_and_span(
                 &config_toml_content)?;
-            
+
             let tag = readme_code_extractor_lib::public::string_literal_content(&tag);
             // @TODO use
             /*let _preamble_txt= if let Some(preamble_text) = readme_extracted.preamble_text() {};
@@ -234,8 +234,7 @@ fn nth_by_config_content_and_span(
         cfg_content_and_span,
         |code_blocks, idx, _, _| {
             let _ = span;
-            true_or_err!(
-                span,
+            true_or_fail_deep!(
                 idx < code_blocks.len(),
                 "The received index {idx} is non-negative (usize), but it's outside of {} code blocks.",
                 code_blocks.len()
@@ -256,7 +255,7 @@ fn nth_by_config_content_and_span(
         cfg_content_and_span,
         |code_blocks, idx, _, _| {
             let _ = span;
-            true_or_err!(
+            true_or_fail!(
                 span,
                 idx < code_blocks.len(),
                 "The received index {idx} is non-negative (usize), but it's outside of {} code blocks.",
@@ -274,23 +273,24 @@ fn selected_by_config_content_and_span<F>(
     code_block_filter: F,
 ) -> MacroStreamResult
 where
-    F: Fn(&Vec<&dyn CodeBlock>, usize, &dyn CodeBlock, &str) -> MacroResult<bool>,
+    F: Fn(&Vec<&dyn CodeBlock>, usize, &dyn CodeBlock, &str) -> MacroDeepResult<bool>,
 {
     let config_and_span = readme_code_extractor_lib::public::config_and_span(cfg_content_and_span)?;
     let readme_loaded = readme_code_extractor_lib::public::readme_load(&config_and_span)?;
-    let readme_extracted = readme_code_extractor_lib::public::readme_extract(&readme_loaded)?;
+    let span = config_and_span.span();
+    let readme_extracted =
+        readme_code_extractor_lib::public::readme_extract(&readme_loaded).spanned(span)?;
 
-    let config = config_and_span.config();
+    let (config, span) = (config_and_span.config(), config_and_span.span());
 
-    impl_filtered(prefix_stream, config, readme_extracted, code_block_filter)
+    impl_filtered(prefix_stream, config, readme_extracted, code_block_filter).spanned(span)
 }
 
 macro_rules! token_stream_from_str {
-    ($span:expr, $input_string:expr, $err_intended_result_description:expr) => {
+    ($input_string:expr, $err_intended_result_description:expr) => {
         ({
             let input_string = $input_string;
-            ok_or_err!(
-                $span,
+            ok_or_fail_deep!(
                 TokenStream::from_str(input_string),
                 "readme-code-extractor-proc: Parsing {} failed. Unpaired or incorrect Rust \
                  tokens. Input:\n{}\nError: {:?}",
@@ -313,9 +313,9 @@ fn impl_filtered<'a, F>(
     config: &dyn Config,
     mut readme_extracted: impl ReadmeExtracted<'a>,
     code_block_filter: F,
-) -> MacroStreamResult
+) -> MacroStreamDeepResult
 where
-    F: Fn(&Vec<&dyn CodeBlock>, usize, &dyn CodeBlock, &str) -> MacroResult<bool>,
+    F: Fn(&Vec<&dyn CodeBlock>, usize, &dyn CodeBlock, &str) -> MacroDeepResult<bool>,
 {
     let (has_tags, tags, tags_iter_or_cycle, after_tag): (
         bool,
@@ -342,14 +342,13 @@ where
 
     let blocks = readme_extracted
         .non_preamble_blocks()
-        .collect::<MacroResult<Vec<_>>>()?;
+        .collect::<MacroDeepResult<Vec<_>>>()?;
 
     // @TODO apply backtick suffixes like "ignore" or "norun"
     let mut code_blocks = Vec::with_capacity(blocks.len() / 2 + 1);
     code_blocks.extend(blocks.iter().filter_map(ReadmeBlock::code));
 
-    true_or_err!(
-        readme_extracted.span(),
+    true_or_fail_deep!(
         !has_tags || code_blocks.len() == tags.len(),
         "Expecting number of blocks {} and number of tags {} to be the same!",
         code_blocks.len(),
@@ -403,13 +402,12 @@ where
         // Verify that the pushed part is a well-formed Rust token stream, that is, all parens (..),
         // brackets [..] and braces {..} are "balanced", string and char literals are well enclosed
         // etc.
-        let _ = token_stream_from_str!(readme_extracted.span(), block_code, "Code block");
+        let _ = token_stream_from_str!(block_code, "Code block");
         generated_per_block.push_str(block_code);
 
         // Verify that the total output is a well-formed Rust token stream.
         generated_per_block.push_str(ordinary_code_suffix);
         let _ = token_stream_from_str!(
-            readme_extracted.span(),
             &generated_per_block,
             "Extended code block: Prefix, tag, after_tag, the original code and suffix."
         );
@@ -420,7 +418,6 @@ where
 
     // Verify a well-formed Rust token stream.
     let main_token_stream = token_stream_from_str!(
-        readme_extracted.span(),
         &generated_all,
         "Whole output: start_prefix, all code blocks extended, and final_suffix."
     );
