@@ -4,11 +4,13 @@ use core::str::FromStr;
 use proc_macro::TokenStream as ProcTokenStream;
 use proc_macro_rules::rules;
 use proc_macro2::TokenStream;
+use proc_macro2_diagnostics::SpanDiagnosticExt as _;
 use quote::quote;
 use readme_code_extractor_lib::public::{
     CodeBlock, Config, ConfigAndSpan, ConfigContentAndSpan, MacroResult, ReadmeBlock,
     ReadmeExtracted,
 };
+use readme_code_extractor_lib::{ok_or_err, true_or_err};
 
 type MacroStreamResult = MacroResult<TokenStream>;
 
@@ -85,7 +87,12 @@ fn all_by_file_impl(input: TokenStream) -> MacroStreamResult {
             let toml_config_file_path = toml_config_file_path.as_ref();
             let prefix_stream = format!("const _: &str = ::std::include_str!(\"{toml_config_file_path}\");\n");
 
-            let prefix_stream = TokenStream::from_str(&prefix_stream).expect("TODO");
+            let prefix_stream = ok_or_err!(
+                cfg_content_and_span.span(),
+                TokenStream::from_str(&prefix_stream),
+                "The given TOML config file path is not well formed, or somehow the following \
+                 couldn't be parsed:\n{}\nError:\n{:?}", prefix_stream
+            );
 
             all_by_config_content_and_span(prefix_stream, cfg_content_and_span)
         }
@@ -106,12 +113,12 @@ fn nth_impl(input: TokenStream) -> MacroStreamResult {
 
             let cfg_content_and_span = readme_code_extractor_lib::public::config_content_and_span(
                 &config_toml_content)?;
-            let code_block_index = match index.to_string().parse::<usize>() {
-                Ok(value) => value,
-                Err(err) => {//@TODO
-                    panic!("Expecting a non-negative (usize) index literal, but received: {err:?}")
-                }
-            };
+            //let code_block_index = match index.to_string().parse::<usize>() {
+            let code_block_index = ok_or_err!(
+                cfg_content_and_span.span(),
+                index.to_string().parse::<usize>(),
+                "Expecting a non-negative (usize) index literal, but received: {:?}"
+            );
             // @TODO use
             /*let _preamble_txt= if let Some(preamble_text) = readme_extracted.preamble_text() {};
             let preamble_code = if let Some(preamble_code) = readme_extracted.preamble_code() {};
@@ -157,18 +164,18 @@ fn selected_by_config_content_and_span<F: Fn(usize, &dyn CodeBlock, &str) -> boo
 }
 
 macro_rules! token_stream_from_str {
-    ($input_string:expr, $err_intended_result_description:expr) => {
+    ($span:expr, $input_string:expr, $err_intended_result_description:expr) => {
         ({
             let input_string = $input_string;
-            let result = TokenStream::from_str(input_string);
-            if let Err(e) = result {
-                panic!(
-                    "readme-code-extractor-proc: Parsing {} failed. Unpaired or incorrect Rust \n
-                     tokens. Input:\n{}\nError: {}",
-                    $err_intended_result_description, input_string, e
-                );
-            }
-            result.unwrap()
+            //let result = TokenStream::from_str(input_string);
+            ok_or_err!(
+                $span,
+                TokenStream::from_str(input_string),
+                "readme-code-extractor-proc: Parsing {} failed. Unpaired or incorrect Rust \
+                 tokens. Input:\n{}\nError: {:?}",
+                $err_intended_result_description,
+                input_string
+            )
         })
     };
 }
@@ -231,7 +238,8 @@ fn impl_filtered<'a, F: Fn(usize, &dyn CodeBlock, &str) -> bool>(
     //
     //panic!("code_blocks[0]: {}", code_blocks[0].code());
 
-    assert!(
+    true_or_err!(
+        readme_extracted.span(),
         !has_inserts || code_blocks.len() == inserts.len(),
         "Expecting number of blocks {} and number of inserts {} to be the same!",
         code_blocks.len(),
@@ -282,12 +290,13 @@ fn impl_filtered<'a, F: Fn(usize, &dyn CodeBlock, &str) -> bool>(
         // Verify that the pushed part is a well-formed Rust token stream, that is, all parens (..),
         // brackets [..] and braces {..} are "balanced", string and char literals are well enclosed
         // etc.
-        let _ = token_stream_from_str!(block_code, "Code block");
+        let _ = token_stream_from_str!(readme_extracted.span(), block_code, "Code block");
         code.push_str(block_code);
 
         // Verify a well-formed Rust token stream.
         code.push_str(ordinary_code_suffix);
         let _ = token_stream_from_str!(
+            readme_extracted.span(),
             &code,
             "Extended code block: Prefix, insert, after_insert, the original code and suffix."
         );
@@ -298,6 +307,7 @@ fn impl_filtered<'a, F: Fn(usize, &dyn CodeBlock, &str) -> bool>(
 
     // Verify a well-formed Rust token stream.
     let main_token_stream = token_stream_from_str!(
+        readme_extracted.span(),
         &all_code,
         "All code blocks extended, and with start_prefix and final_suffix"
     );
