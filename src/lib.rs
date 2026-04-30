@@ -8,11 +8,12 @@ use proc_macro2_diagnostics::Diagnostic;
 use proc_macro2_diagnostics::SpanDiagnosticExt as _;
 use quote::{quote, quote_spanned};
 use readme_code_extractor_lib::public::{
-    CodeBlock, Config, ConfigAndSpan, ConfigContentAndSpan, ReadmeBlock, ReadmeExtracted,
+    CodeBlock, Config, ConfigAndSpan, ConfigContentAndSpan, MacroResult, ReadmeBlock,
+    ReadmeExtracted,
 };
 use syn::spanned::Spanned as _;
 
-type MacroResult<T> = Result<T, Diagnostic>;
+type MacroStreamResult = MacroResult<TokenStream>;
 
 const _ASSERT_README_CODE_EXTRACTOR_LIB_VERSION: () = {
     if !readme_code_extractor_lib::is_exact_version(env!("CARGO_PKG_VERSION")) {
@@ -25,24 +26,8 @@ const _ASSERT_README_CODE_EXTRACTOR_LIB_VERSION: () = {
         );
     }
 };
-
-// @TODO pass first param: file path
-/// NOT public - for testing of [readme_code_extractor_lib::load_file] only. See
-/// [readme_code_extractor_lib::load_file].
-/*#[doc(hidden)]
-#[proc_macro]
-pub fn test_load_file(input: TokenStream) -> TokenStream {
-    rules!(input.into() => {
-        ( $literal:literal ) => {
-            let content = readme_code_extractor_lib::load_file(&literal);
-            quote! {
-                #content
-            }
-        }
-    })
-    .into()
-}*/
 // ----
+
 /// Process all code blocks in the given input.
 ///
 /// The given input is
@@ -62,17 +47,24 @@ pub fn test_load_file(input: TokenStream) -> TokenStream {
 ///     column 0 should look OK.
 #[proc_macro]
 pub fn all(input: ProcTokenStream) -> ProcTokenStream {
-    rules!(input.into() => {
+    match all_impl(input.into()) {
+        Ok(input) => input.into(),
+        Err(diag) => diag.emit_as_expr_tokens().into(),
+    }
+}
+
+fn all_impl(input: TokenStream) -> MacroStreamResult {
+    rules!(input => {
         ( $config_toml_content:literal ) => {
 
             let cfg_content_and_span = readme_code_extractor_lib::public::config_content_and_span(
-                &config_toml_content);
+                &config_toml_content)?;
             // @TODO use
             /*let _preamble_txt= if let Some(preamble_text) = readme_extracted.preamble_text() {};
             let preamble_code = if let Some(preamble_code) = readme_extracted.preamble_code() {};
             ...
             q.extend( q2);*/
-            all_by_config_content_and_span(cfg_content_and_span)
+            all_by_config_content_and_span(TokenStream::new(), cfg_content_and_span)
         }
     })
 }
@@ -80,32 +72,46 @@ pub fn all(input: ProcTokenStream) -> ProcTokenStream {
 /// Invoked by `readme_code_extractor::all_by_file`.
 #[proc_macro]
 pub fn all_by_file(input: ProcTokenStream) -> ProcTokenStream {
-    rules!(input.into() => {
+    match all_by_file_impl(input.into()) {
+        Ok(input) => input.into(),
+        Err(diag) => diag.emit_as_expr_tokens().into(),
+    }
+}
+
+fn all_by_file_impl(input: TokenStream) -> MacroStreamResult {
+    rules!(input => {
         ( $config_toml_content:literal ) => {
 
             let (cfg_content_and_span, toml_config_file_path) = readme_code_extractor_lib::public::config_content_and_span_by_file(
-                &config_toml_content);
+                &config_toml_content)?;
 
             let toml_config_file_path = toml_config_file_path.as_ref();
             let prefix_stream = format!("const _: &str = ::std::include_str!(\"{toml_config_file_path}\");\n");
 
             let prefix_stream = TokenStream::from_str(&prefix_stream).expect("TODO");
 
-            selected_by_config_content_and_span(prefix_stream, cfg_content_and_span, |_, _, _| true)
+            all_by_config_content_and_span(prefix_stream, cfg_content_and_span)
         }
     })
 }
 
 #[proc_macro]
 pub fn nth(input: ProcTokenStream) -> ProcTokenStream {
-    rules!(input.into() => {
+    match nth_impl(input.into()) {
+        Ok(input) => input.into(),
+        Err(diag) => diag.emit_as_expr_tokens().into(),
+    }
+}
+
+fn nth_impl(input: TokenStream) -> MacroStreamResult {
+    rules!(input => {
         ( $config_toml_content:literal @ $index:literal) => {
 
             let cfg_content_and_span = readme_code_extractor_lib::public::config_content_and_span(
-                &config_toml_content);
+                &config_toml_content)?;
             let code_block_index = match index.to_string().parse::<usize>() {
                 Ok(value) => value,
-                Err(err) => {
+                Err(err) => {//@TODO
                     panic!("Expecting a non-negative (usize) index literal, but received: {err:?}")
                 }
             };
@@ -114,23 +120,25 @@ pub fn nth(input: ProcTokenStream) -> ProcTokenStream {
             let preamble_code = if let Some(preamble_code) = readme_extracted.preamble_code() {};
             ...
             q.extend( q2);*/
-            nth_by_config_content_and_span(cfg_content_and_span, code_block_index)
+            nth_by_config_content_and_span(TokenStream::new(), cfg_content_and_span, code_block_index)
         }
     })
 }
 // ----
 
 fn all_by_config_content_and_span(
+    prefix_stream: TokenStream,
     cfg_content_and_span: impl ConfigContentAndSpan,
-) -> ProcTokenStream {
-    selected_by_config_content_and_span(TokenStream::new(), cfg_content_and_span, |_, _, _| true)
+) -> MacroStreamResult {
+    selected_by_config_content_and_span(prefix_stream, cfg_content_and_span, |_, _, _| true)
 }
 
 fn nth_by_config_content_and_span(
+    prefix_stream: TokenStream,
     cfg_content_and_span: impl ConfigContentAndSpan,
     code_block_index: usize,
-) -> ProcTokenStream {
-    selected_by_config_content_and_span(TokenStream::new(), cfg_content_and_span, |idx, _, _| {
+) -> MacroStreamResult {
+    selected_by_config_content_and_span(prefix_stream, cfg_content_and_span, |idx, _, _| {
         idx == code_block_index
     })
 }
@@ -140,14 +148,15 @@ fn selected_by_config_content_and_span<F: Fn(usize, &dyn CodeBlock, &str) -> boo
     prefix_stream: TokenStream,
     cfg_content_and_span: impl ConfigContentAndSpan,
     code_block_filter: F,
-) -> ProcTokenStream {
-    let config_and_span = readme_code_extractor_lib::public::config_and_span(&cfg_content_and_span);
-    let readme_loaded = readme_code_extractor_lib::public::readme_load(&config_and_span);
-    let readme_extracted = readme_code_extractor_lib::public::readme_extract(&readme_loaded);
+) -> MacroStreamResult {
+    let config_and_span =
+        readme_code_extractor_lib::public::config_and_span(&cfg_content_and_span)?;
+    let readme_loaded = readme_code_extractor_lib::public::readme_load(&config_and_span)?;
+    let readme_extracted = readme_code_extractor_lib::public::readme_extract(&readme_loaded)?;
 
     let config = config_and_span.config();
 
-    impl_filtered(prefix_stream, config, readme_extracted, code_block_filter).into()
+    impl_filtered(prefix_stream, config, readme_extracted, code_block_filter)
 }
 
 macro_rules! token_stream_from_str {
@@ -179,7 +188,7 @@ fn impl_filtered<'a, F: Fn(usize, &dyn CodeBlock, &str) -> bool>(
     config: &dyn Config,
     mut readme_extracted: impl ReadmeExtracted<'a>,
     code_block_filter: F,
-) -> TokenStream {
+) -> MacroStreamResult {
     let (has_inserts, inserts, inserts_iter_or_cycle, after_insert): (
         bool,
         &[&str],
@@ -214,7 +223,9 @@ fn impl_filtered<'a, F: Fn(usize, &dyn CodeBlock, &str) -> bool>(
         + after_insert.len()
         + ordinary_code_suffix.len();
 
-    let blocks = readme_extracted.non_preamble_blocks().collect::<Vec<_>>();
+    let blocks = readme_extracted
+        .non_preamble_blocks()
+        .collect::<MacroResult<Vec<_>>>()?;
 
     // @TODO apply backtick suffixes like "ignore" or "norun"
     let mut code_blocks = Vec::with_capacity(blocks.len() / 2 + 1);
@@ -294,9 +305,10 @@ fn impl_filtered<'a, F: Fn(usize, &dyn CodeBlock, &str) -> bool>(
         "All code blocks extended, and with start_prefix and final_suffix"
     );
     prefix_stream.extend(core::iter::once(main_token_stream));
-    prefix_stream
+    Ok(prefix_stream)
 }
 
+/*
 /// This is like `readme_code_extractor::all_by_file``, except that `all_by_file` is a declarative
 /// macro (macro by example, defined by `macro_rules`). However, [create_nth_extractor_macro] can't
 /// be declarative. Why? Because it itself defines a new declarative macro which needs to have a
@@ -325,6 +337,7 @@ pub fn create_nth_extractor_macro(input: ProcTokenStream) -> ProcTokenStream {
     })
     .into()
 }
+*/
 
 #[doc(hidden)]
 #[proc_macro]
