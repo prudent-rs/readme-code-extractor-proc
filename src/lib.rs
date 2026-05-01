@@ -372,9 +372,9 @@ where
     // @TODO preamble etc.
     let total_code_blocks_len = code_blocks.iter().map(|b| b.code().len()).sum::<usize>();
 
-    let markdown_file_local_path = readme_extracted.markdown_file_local_path();
+    let markdown_file_path = readme_extracted.markdown_file_path();
     let code_to_load_markdown_file =
-        format!("const _: &str = ::std::include_str!(\"{markdown_file_local_path}\");\n");
+        format!("const _: &str = ::std::include_str!(\"{markdown_file_path}\");\n");
 
     // We don't count the length of all tags. Using the maximum is good enough.
     let mut generated_all = String::with_capacity(
