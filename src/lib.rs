@@ -220,7 +220,7 @@ fn all_by_config_content_and_span(
     prefix_stream: TokenStream,
     cfg_content_and_span: &impl ConfigContentAndSpan,
 ) -> MacroStreamResult {
-    selected_by_config_content_and_span(prefix_stream, cfg_content_and_span, |_, _, _, _| Ok(true))
+    selected_by_config_content_and_span(prefix_stream, cfg_content_and_span, |_, _, _| Ok(true))
 }
 
 fn nth_by_config_content_and_span(
@@ -232,7 +232,7 @@ fn nth_by_config_content_and_span(
     selected_by_config_content_and_span(
         prefix_stream,
         cfg_content_and_span,
-        |code_blocks, idx, _, _| {
+        |code_blocks, idx, _| {
             let _ = span;
             true_or_fail_deep!(
                 idx < code_blocks.len(),
@@ -273,7 +273,7 @@ fn selected_by_config_content_and_span<F>(
     code_block_filter: F,
 ) -> MacroStreamResult
 where
-    F: Fn(&Vec<&dyn CodeBlock>, usize, &dyn CodeBlock, &str) -> MacroDeepResult<bool>,
+    F: Fn(&Vec<&dyn CodeBlock>, usize, &dyn CodeBlock) -> MacroDeepResult<bool>,
 {
     let config_and_span = readme_code_extractor_lib::public::config_and_span(cfg_content_and_span)?;
     let readme_loaded = readme_code_extractor_lib::public::readme_load(&config_and_span)?;
@@ -315,30 +315,9 @@ fn impl_filtered<'a, F>(
     code_block_filter: F,
 ) -> MacroStreamDeepResult
 where
-    F: Fn(&Vec<&dyn CodeBlock>, usize, &dyn CodeBlock, &str) -> MacroDeepResult<bool>,
+    F: Fn(&Vec<&dyn CodeBlock>, usize, &dyn CodeBlock) -> MacroDeepResult<bool>,
 {
-    let (has_tags, tags, tags_iter_or_cycle, after_tag): (
-        bool,
-        &[&str],
-        &mut dyn Iterator<Item = &&str>,
-        &str,
-    ) = if let Some(headers) = config.ordinary_code_headers()
-        && let Some(tags) = headers.tags()
-    {
-        (true, tags.tags(), &mut tags.tags().iter(), tags.after_tag())
-    } else {
-        (false, &[], &mut [""].iter().cycle(), "")
-    };
-
-    let (prefix_before_tag, max_tag_len) = if let Some(headers) = config.ordinary_code_headers() {
-        (
-            headers.prefix_before_tag(),
-            tags.iter().map(|&s| s.len()).max().unwrap_or(0),
-        )
-    } else {
-        ("", 0usize)
-    };
-    let ordinary_code_suffix = config.ordinary_code_suffix();
+    let headers = config.code_headers();
 
     let blocks = readme_extracted
         .non_preamble_blocks()
@@ -348,22 +327,19 @@ where
     let mut code_blocks = Vec::with_capacity(blocks.len() / 2 + 1);
     code_blocks.extend(blocks.iter().filter_map(ReadmeBlock::code));
 
-    true_or_fail_deep!(
-        !has_tags || code_blocks.len() == tags.len(),
-        "Expecting number of blocks {} and number of tags {} to be the same!",
-        code_blocks.len(),
-        tags.len()
-    );
-
     let max_code_block_len = code_blocks
         .iter()
         .map(|b| b.code().len())
         .max()
         .unwrap_or(0);
 
+    let max_tag_len = 0usize; // @TODO
+
     let mut generated_per_block = {
-        let config_generated_len_per_block =
-            prefix_before_tag.len() + max_tag_len + after_tag.len() + ordinary_code_suffix.len();
+        let config_generated_len_per_block = headers.top_prefix().len()
+            + max_tag_len
+            + headers.tag_suffix().len()
+            + headers.end_suffix().len();
         // @TODO triple_backtick_suffix- BUT only if we pass it through
 
         String::with_capacity(config_generated_len_per_block + max_code_block_len)
@@ -388,15 +364,15 @@ where
     generated_all.push_str(&code_to_load_markdown_file);
     generated_all.push_str(config.start_prefix());
 
-    for (code_block_idx, (&block, &tag)) in code_blocks.iter().zip(tags_iter_or_cycle).enumerate() {
-        if !code_block_filter(&code_blocks, code_block_idx, block, tag)? {
+    for (code_block_idx, &block) in code_blocks.iter().enumerate() {
+        if !code_block_filter(&code_blocks, code_block_idx, block)? {
             continue;
         }
         generated_per_block.clear();
         // @TODO triple_backtick_suffix
-        generated_per_block.push_str(prefix_before_tag);
-        generated_per_block.push_str(tag);
-        generated_per_block.push_str(after_tag);
+        generated_per_block.push_str(headers.top_prefix());
+        //generated_per_block.push_str(tag); @TODO
+        generated_per_block.push_str(headers.tag_suffix());
 
         let block_code = block.code();
         // Verify that the pushed part is a well-formed Rust token stream, that is, all parens (..),
@@ -406,7 +382,7 @@ where
         generated_per_block.push_str(block_code);
 
         // Verify that the total output is a well-formed Rust token stream.
-        generated_per_block.push_str(ordinary_code_suffix);
+        generated_per_block.push_str(headers.end_suffix());
         let _ = token_stream_from_str!(
             &generated_per_block,
             "Extended code block: Prefix, tag, after_tag, the original code and suffix."
