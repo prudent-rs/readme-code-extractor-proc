@@ -5,12 +5,11 @@ use proc_macro::TokenStream as ProcTokenStream;
 use proc_macro_rules::rules;
 use proc_macro2::{Literal, Span, TokenStream};
 use quote::quote;
+use readme_code_extractor_lib::public::ext::*;
 use readme_code_extractor_lib::public::{
     CodeBlock, Config, ConfigAndSpan, ConfigContentAndSpan, MacroDeepResult, MacroResult,
-    OwnedStringSlice, ReadmeBlock, ReadmeExtracted,
+    OwnedStringSlice, ReadmeBlock, ReadmeExtracted, assert,
 };
-use readme_code_extractor_lib::public::MacroDeepResultExt as _;
-use readme_code_extractor_lib::{ok_or_fail, ok_or_fail_deep, true_or_fail_deep};
 
 type MacroStreamResult = MacroResult<TokenStream>;
 type MacroStreamDeepResult = MacroDeepResult<TokenStream>;
@@ -89,13 +88,16 @@ fn load_file_to_const(span: Span, toml_config_file_path: &OwnedStringSlice) -> M
     let prefix_stream =
         format!("const _: &str = ::std::include_str!(\"{toml_config_file_path}\");\n");
 
-    Ok(ok_or_fail!(
+    TokenStream::from_str(&prefix_stream).map_error_dbg_with_for(
+        || {
+            format!(
+                "The given TOML config file path is not well formed, or somehow the following \
+        couldn't be parsed: {}",
+                prefix_stream
+            )
+        },
         span,
-        TokenStream::from_str(&prefix_stream),
-        "The given TOML config file path is not well formed, or somehow the following \
-            couldn't be parsed:\n{}\nError:\n{:?}",
-        prefix_stream
-    ))
+    )
 }
 
 fn all_by_file_impl(input: TokenStream) -> MacroStreamResult {
@@ -127,12 +129,15 @@ pub fn nth(input: ProcTokenStream) -> ProcTokenStream {
 
 fn code_block_index(index: &Literal) -> MacroResult<usize> {
     let index_string = index.to_string();
-    Ok(ok_or_fail!(
+    index_string.parse::<usize>().map_error_dbg_with_for(
+        || {
+            format!(
+                "Expecting a non-negative (usize) index literal, but received: {}",
+                index_string
+            )
+        },
         index.span(),
-        index_string.parse::<usize>(),
-        "Expecting a non-negative (usize) index literal, but received: {}. Error: {:?}",
-        index_string
-    ))
+    )
 }
 
 fn nth_impl(input: TokenStream) -> MacroStreamResult {
@@ -235,11 +240,12 @@ fn nth_by_config_content_and_span(
         cfg_content_and_span,
         |code_blocks, idx, _| {
             let _ = span;
-            true_or_fail_deep!(
-                idx < code_blocks.len(),
-                "The received index {idx} is non-negative (usize), but it's outside of {} code blocks.",
-                code_blocks.len()
-            );
+            assert::true_or_error(idx < code_blocks.len(), || {
+                format!(
+                    "The received index {idx} is non-negative (usize), but it's outside of {} code blocks.",
+                    code_blocks.len()
+                )
+            })?;
             Ok(idx == code_block_index)
         },
     )
@@ -291,13 +297,13 @@ macro_rules! token_stream_from_str {
     ($input_string:expr, $err_intended_result_description:expr) => {
         ({
             let input_string = $input_string;
-            ok_or_fail_deep!(
-                TokenStream::from_str(input_string),
-                "readme-code-extractor-proc: Parsing {} failed. Unpaired or incorrect Rust \
-                 tokens. Input:\n{}\nError: {:?}",
-                $err_intended_result_description,
-                input_string
-            )
+            TokenStream::from_str(input_string).map_error_dbg_with(|| {
+                format!(
+                    "readme-code-extractor-proc failed to parse: {}\nunpaired or incorrect Rust \
+                tokens in: {}",
+                    $err_intended_result_description, input_string
+                )
+            })?
         })
     };
 }
