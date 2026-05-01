@@ -44,6 +44,10 @@ const _ASSERT_README_CODE_EXTRACTOR_LIB_VERSION: () = {
 ///     on a new line! But, such macros are likely to be used at their file's top level (rather than
 ///     in a module or a function), so the raw string's actual content starting on a new line at
 ///     column 0 should look OK.
+///
+/// NOT filtering by "tag:" value in the triple backtick suffix (if any).
+///
+/// Whether the "tag:" value is passed through or not is controlled by TOML configuration.
 #[proc_macro]
 pub fn all(input: ProcTokenStream) -> ProcTokenStream {
     match all_impl(input.into()) {
@@ -91,8 +95,7 @@ fn load_file_to_const(span: Span, toml_config_file_path: &OwnedStringSlice) -> M
     TokenStream::from_str(&prefix_stream).map_error_dbg_with_for(
         || {
             format!(
-                "The given TOML config file path is not well formed, or somehow the following \
-        couldn't be parsed: {}",
+                "the TOML config file path is not well formed, or it failed to parse: {}",
                 prefix_stream
             )
         },
@@ -242,7 +245,7 @@ fn nth_by_config_content_and_span(
             let _ = span;
             assert::true_or_error(idx < code_blocks.len(), || {
                 format!(
-                    "The received index {idx} is non-negative (usize), but it's outside of {} code blocks.",
+                    "The index {idx} is non-negative (usize), but it's outside of {} code blocks.",
                     code_blocks.len()
                 )
             })?;
@@ -334,39 +337,37 @@ where
     let mut code_blocks = Vec::with_capacity(blocks.len() / 2 + 1);
     code_blocks.extend(blocks.iter().filter_map(ReadmeBlock::code));
 
-    let max_code_block_len = code_blocks
-        .iter()
-        .map(|b| b.code().len())
-        .max()
-        .unwrap_or(0);
-
-    let max_tag_len = 0usize; // @TODO
-
-    let mut generated_per_block = {
-        let config_generated_len_per_block = headers.top_prefix().len()
-            + max_tag_len
-            + headers.tag_suffix().len()
-            + headers.end_suffix().len();
-        // @TODO triple_backtick_suffix- BUT only if we pass it through
-
-        String::with_capacity(config_generated_len_per_block + max_code_block_len)
-    };
-
-    // @TODO preamble etc.
-    let total_code_blocks_len = code_blocks.iter().map(|b| b.code().len()).sum::<usize>();
-
     let markdown_file_path = readme_extracted.markdown_file_path();
     let code_to_load_markdown_file =
         format!("const _: &str = ::std::include_str!(\"{markdown_file_path}\");\n");
 
-    // We don't count the length of all tags. Using the maximum is good enough.
-    let mut generated_all = String::with_capacity(
-        code_to_load_markdown_file.len()
-            + config.start_prefix().len()
-            + total_code_blocks_len
-            + max_code_block_len * code_blocks.len()
-            + config.final_suffix().len(),
-    );
+    let (mut generated_per_block, mut generated_all) = {
+        let config_generated_len_per_block =
+            headers.top_prefix().len() + headers.tag_suffix().len() + headers.end_suffix().len();
+
+        let max_code_block_and_tag_len = code_blocks
+            .iter()
+            .map(|b| b.code().len() + b.tag().map_or(0, |tag| tag.len()))
+            .max()
+            .unwrap_or(0);
+
+        let generated_per_block =
+            String::with_capacity(config_generated_len_per_block + max_code_block_and_tag_len);
+
+        // @TODO preamble etc.
+        let total_code_blocks_len = code_blocks.iter().map(|b| b.code().len()).sum::<usize>();
+
+        // We don't count the length of all tags. Using the maximum is good enough.
+        let generated_all = String::with_capacity(
+            code_to_load_markdown_file.len()
+                + config.start_prefix().len()
+                + total_code_blocks_len
+                + max_code_block_and_tag_len * code_blocks.len()
+                + config.final_suffix().len(),
+        );
+
+        (generated_per_block, generated_all)
+    };
 
     generated_all.push_str(&code_to_load_markdown_file);
     generated_all.push_str(config.start_prefix());
@@ -378,7 +379,9 @@ where
         generated_per_block.clear();
         // @TODO triple_backtick_suffix
         generated_per_block.push_str(headers.top_prefix());
-        //generated_per_block.push_str(tag); @TODO
+        if config.pass_through_tags() {
+            generated_per_block.push_str(block.tag().unwrap_or(""));
+        }
         generated_per_block.push_str(headers.tag_suffix());
 
         let block_code = block.code();
