@@ -7,8 +7,9 @@ use proc_macro2::{Literal, Span, TokenStream};
 use quote::quote;
 use readme_code_extractor_lib::public::{
     CodeBlock, Config, ConfigAndSpan, ConfigContentAndSpan, MacroDeepResult, MacroResult,
-    MacroResultDeepExt, OwnedStringSlice, ReadmeBlock, ReadmeExtracted,
+    OwnedStringSlice, ReadmeBlock, ReadmeExtracted,
 };
+use readme_code_extractor_lib::public::MacroDeepResultExt as _;
 use readme_code_extractor_lib::{ok_or_fail, ok_or_fail_deep, true_or_fail_deep};
 
 type MacroStreamResult = MacroResult<TokenStream>;
