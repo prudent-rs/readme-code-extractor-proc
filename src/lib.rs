@@ -184,23 +184,18 @@ fn nth_by_file_impl(input: TokenStream) -> MacroStreamResult {
                 cfg_content_and_span.span(), &toml_config_file_path)?;
 
             let code_block_index = code_block_index(&index)?;
-            // @TODO use
-            /*let _preamble_txt= if let Some(preamble_text) = readme_extracted.preamble_text() {};
-            let preamble_code = if let Some(preamble_code) = readme_extracted.preamble_code() {};
-            ...
-            q.extend( q2);*/
             nth_by_config_content_and_span(prefix_stream, &cfg_content_and_span, code_block_index)
         }
     })
 }
 // ----
-/*
-/// Process (adjust and pass through) only code block with a given tag.
+/// Process (adjust and pass through) only code block with a given tag. ONLY one matching code
+/// block.
 ///
 /// Configuration is in the first input. Tag is in the second input.
 #[proc_macro]
 pub fn tag(input: ProcTokenStream) -> ProcTokenStream {
-    match nth_impl(input.into()) {
+    match tag_impl(input.into()) {
         Ok(input) => input.into(),
         Err(diag) => diag.emit_as_expr_tokens().into(),
     }
@@ -208,21 +203,24 @@ pub fn tag(input: ProcTokenStream) -> ProcTokenStream {
 
 fn tag_impl(input: TokenStream) -> MacroStreamResult {
     rules!(input => {
-        ( $config_toml_content:literal @ $tag:literal) => {
+        ( $config_toml_content:literal one @ $tag:literal) => {
 
             let cfg_content_and_span = readme_code_extractor_lib::public::config_content_and_span(
                 &config_toml_content)?;
 
-            let tag = readme_code_extractor_lib::public::string_literal_content(&tag);
-            // @TODO use
-            /*let _preamble_txt= if let Some(preamble_text) = readme_extracted.preamble_text() {};
-            let preamble_code = if let Some(preamble_code) = readme_extracted.preamble_code() {};
-            ...
-            q.extend( q2);*/
-            tag_by_config_content_and_span(TokenStream::new(), &cfg_content_and_span, &tag)
+            let tag = readme_code_extractor_lib::public::string_literal_content(&tag)?;
+            tag_by_config_content_and_span(TokenStream::new(), &cfg_content_and_span, tag.as_ref(), true)
+        }
+        ( $config_toml_content:literal any @ $tag:literal) => {
+
+            let cfg_content_and_span = readme_code_extractor_lib::public::config_content_and_span(
+                &config_toml_content)?;
+
+            let tag = readme_code_extractor_lib::public::string_literal_content(&tag)?;
+            tag_by_config_content_and_span(TokenStream::new(), &cfg_content_and_span, tag.as_ref(), true)
         }
     })
-}*/
+}
 // ----
 
 fn all_by_config_content_and_span(
@@ -237,12 +235,10 @@ fn nth_by_config_content_and_span(
     cfg_content_and_span: &impl ConfigContentAndSpan,
     code_block_index: usize,
 ) -> MacroStreamResult {
-    let span = cfg_content_and_span.span();
     selected_by_config_content_and_span(
         prefix_stream,
         cfg_content_and_span,
         |code_blocks, idx, _| {
-            let _ = span;
             assert::true_or_error(idx < code_blocks.len(), || {
                 format!(
                     "The index {idx} is non-negative (usize), but it's outside of {} code blocks.",
@@ -254,27 +250,23 @@ fn nth_by_config_content_and_span(
     )
 }
 
-/*fn tag_by_config_content_and_span(
+fn tag_by_config_content_and_span(
     prefix_stream: TokenStream,
     cfg_content_and_span: &impl ConfigContentAndSpan,
-    tag: &OwnedStringSlice
+    tag: &str,
+    tag_one_match_only: bool,
 ) -> MacroStreamResult {
-    let span = cfg_content_and_span.span();
-    selected_by_config_content_and_span(
-        prefix_stream,
-        cfg_content_and_span,
-        |code_blocks, idx, _, _| {
-            let _ = span;
-            true_or_fail!(
-                span,
-                idx < code_blocks.len(),
-                "The received index {idx} is non-negative (usize), but it's outside of {} code blocks.",
-                code_blocks.len()
-            );
-            Ok(idx == code_block_index)
-        },
-    )
-}*/
+    let mut already_found = false;
+
+    selected_by_config_content_and_span(prefix_stream, cfg_content_and_span, |_, _, code_block| {
+        assert::true_or_error(!tag_one_match_only || !already_found, || {
+            format!("already found one code block with the same tag: {tag}")
+        })?;
+        let found = code_block.tag() == Some(tag);
+        already_found |= found;
+        Ok(found)
+    })
+}
 // ----
 
 fn selected_by_config_content_and_span<F>(
@@ -283,7 +275,7 @@ fn selected_by_config_content_and_span<F>(
     code_block_filter: F,
 ) -> MacroStreamResult
 where
-    F: Fn(&Vec<&dyn CodeBlock>, usize, &dyn CodeBlock) -> MacroDeepResult<bool>,
+    F: FnMut(&Vec<&dyn CodeBlock>, usize, &dyn CodeBlock) -> MacroDeepResult<bool>,
 {
     let config_and_span = readme_code_extractor_lib::public::config_and_span(cfg_content_and_span)?;
     let readme_loaded = readme_code_extractor_lib::public::readme_load(&config_and_span)?;
@@ -322,10 +314,10 @@ fn impl_filtered<'a, F>(
     mut prefix_stream: TokenStream,
     config: &dyn Config,
     mut readme_extracted: impl ReadmeExtracted<'a>,
-    code_block_filter: F,
+    mut code_block_filter: F,
 ) -> MacroStreamDeepResult
 where
-    F: Fn(&Vec<&dyn CodeBlock>, usize, &dyn CodeBlock) -> MacroDeepResult<bool>,
+    F: FnMut(&Vec<&dyn CodeBlock>, usize, &dyn CodeBlock) -> MacroDeepResult<bool>,
 {
     let headers = config.code_headers();
 
