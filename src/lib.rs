@@ -204,22 +204,28 @@ pub fn tag(input: ProcTokenStream) -> ProcTokenStream {
 fn tag_impl(input: TokenStream) -> MacroStreamResult {
     rules!(input => {
         ( $config_toml_content:literal one @ $tag:literal) => {
-
-            let cfg_content_and_span = readme_code_extractor_lib::public::config_content_and_span(
-                &config_toml_content)?;
-
-            let tag = readme_code_extractor_lib::public::string_literal_content(&tag)?;
-            tag_by_config_content_and_span(TokenStream::new(), &cfg_content_and_span, tag.as_ref(), true)
+            tag_impl_shared(config_toml_content, tag, true)
         }
         ( $config_toml_content:literal any @ $tag:literal) => {
-
-            let cfg_content_and_span = readme_code_extractor_lib::public::config_content_and_span(
-                &config_toml_content)?;
-
-            let tag = readme_code_extractor_lib::public::string_literal_content(&tag)?;
-            tag_by_config_content_and_span(TokenStream::new(), &cfg_content_and_span, tag.as_ref(), true)
+            tag_impl_shared(config_toml_content, tag, false)
         }
     })
+}
+fn tag_impl_shared(
+    config_toml_content: Literal,
+    tag: Literal,
+    tag_one_match_only: bool,
+) -> MacroStreamResult {
+    let cfg_content_and_span =
+        readme_code_extractor_lib::public::config_content_and_span(&config_toml_content)?;
+
+    let tag = readme_code_extractor_lib::public::string_literal_content(&tag)?;
+    tag_by_config_content_and_span(
+        TokenStream::new(),
+        &cfg_content_and_span,
+        tag.as_ref(),
+        tag_one_match_only,
+    )
 }
 // ----
 
