@@ -150,11 +150,6 @@ fn nth_impl(input: TokenStream) -> MacroStreamResult {
             let cfg_content_and_span = readme_code_extractor_lib::public::config_content_and_span(
                 &config_toml_content)?;
             let code_block_index = code_block_index(&index)?;
-            // @TODO use
-            /*let _preamble_txt= if let Some(preamble_text) = readme_extracted.preamble_text() {};
-            let preamble_code = if let Some(preamble_code) = readme_extracted.preamble_code() {};
-            ...
-            q.extend( q2);*/
             nth_by_config_content_and_span(TokenStream::new(), &cfg_content_and_span, code_block_index)
         }
     })
@@ -205,25 +200,81 @@ pub fn tag(input: ProcTokenStream) -> ProcTokenStream {
 fn tag_impl(input: TokenStream) -> MacroStreamResult {
     rules!(input => {
         ( $config_toml_content:literal one @ $tag:literal) => {
-            tag_impl_shared(config_toml_content, tag, true)
+            tag_impl_shared_cfg_by_content(config_toml_content, tag, true)
         }
         ( $config_toml_content:literal any @ $tag:literal) => {
-            tag_impl_shared(config_toml_content, tag, false)
+            tag_impl_shared_cfg_by_content(config_toml_content, tag, false)
         }
     })
 }
-fn tag_impl_shared(
+
+fn tag_impl_shared_cfg_by_content(
     config_toml_content: Literal,
     tag: Literal,
     tag_exactly_one_match: bool,
 ) -> MacroStreamResult {
     let cfg_content_and_span =
         readme_code_extractor_lib::public::config_content_and_span(&config_toml_content)?;
-
     let tag = readme_code_extractor_lib::public::string_literal_content(&tag)?;
+
     tag_by_config_content_and_span(
         TokenStream::new(),
         &cfg_content_and_span,
+        tag.as_ref(),
+        tag_exactly_one_match,
+    )
+}
+// ----
+
+#[proc_macro]
+pub fn tag_by_file(input: ProcTokenStream) -> ProcTokenStream {
+    match tag_by_file_impl(input.into()) {
+        Ok(input) => input.into(),
+        Err(diag) => diag.emit_as_expr_tokens().into(),
+    }
+}
+
+fn tag_by_file_impl(input: TokenStream) -> MacroStreamResult {
+    rules!(input => {
+        ( $config_toml_file_path:literal one @ $tag:literal) => {
+
+            tag_impl_shared_cfg_by_file(config_toml_file_path, tag, true)
+        }
+        ( $config_toml_file_path:literal any @ $tag:literal) => {
+
+            tag_impl_shared_cfg_by_file(config_toml_file_path, tag, false)
+        }
+    })
+}
+
+fn tag_impl_shared_cfg_by_file(
+    config_toml_file_path: Literal,
+    tag: Literal,
+    tag_exactly_one_match: bool,
+) -> MacroStreamResult {
+    let (cfg_content_and_span, toml_config_file_path) =
+        readme_code_extractor_lib::public::config_content_and_span_by_file(&config_toml_file_path)?;
+
+    let prefix_stream = load_file_to_const(cfg_content_and_span.span(), &toml_config_file_path)?;
+
+    tag_impl_shared(
+        prefix_stream,
+        &cfg_content_and_span,
+        tag,
+        tag_exactly_one_match,
+    )
+}
+
+fn tag_impl_shared(
+    prefix_stream: TokenStream,
+    cfg_content_and_span: &impl ConfigContentAndSpan,
+    tag: Literal,
+    tag_exactly_one_match: bool,
+) -> MacroStreamResult {
+    let tag = readme_code_extractor_lib::public::string_literal_content(&tag)?;
+    tag_by_config_content_and_span(
+        prefix_stream,
+        cfg_content_and_span,
         tag.as_ref(),
         tag_exactly_one_match,
     )
