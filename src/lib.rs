@@ -269,15 +269,15 @@ fn tag_by_config_content_and_span(
         prefix_stream,
         cfg_content_and_span,
         |_, _, code_block| {
-            assert::true_or_error(!tag_exactly_one_match || !already_found, || {
+            let found = code_block.tag() == Some(tag);
+            assert::true_or_error(!found || !tag_exactly_one_match || !already_found, || {
                 format!("already found one code block with the same tag: {tag}")
             })?;
-            let found = code_block.tag() == Some(tag);
             already_found |= found;
             Ok(found)
         },
     );
-    assert::true_or_error(tag_exactly_one_match && !already_found, || {
+    assert::true_or_error(!tag_exactly_one_match || already_found, || {
         format!("did not find a code block with the given tag: {tag}")
     })
     .spanned(cfg_content_and_span.span())?;
