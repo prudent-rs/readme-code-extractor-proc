@@ -189,8 +189,9 @@ fn nth_by_file_impl(input: TokenStream) -> MacroStreamResult {
     })
 }
 // ----
-/// Process (adjust and pass through) only code block with a given tag. ONLY one matching code
-/// block.
+/// Process (adjust and pass through) only code block(s) with a given tag.
+/// - if `one` then expecting exactly ONE matching code block.
+/// - if `any` then any number of matching code blocks (including zero) is fine.
 ///
 /// Configuration is in the first input. Tag is in the second input.
 #[proc_macro]
@@ -214,7 +215,7 @@ fn tag_impl(input: TokenStream) -> MacroStreamResult {
 fn tag_impl_shared(
     config_toml_content: Literal,
     tag: Literal,
-    tag_one_match_only: bool,
+    tag_exactly_one_match: bool,
 ) -> MacroStreamResult {
     let cfg_content_and_span =
         readme_code_extractor_lib::public::config_content_and_span(&config_toml_content)?;
@@ -224,7 +225,7 @@ fn tag_impl_shared(
         TokenStream::new(),
         &cfg_content_and_span,
         tag.as_ref(),
-        tag_one_match_only,
+        tag_exactly_one_match,
     )
 }
 // ----
@@ -260,18 +261,27 @@ fn tag_by_config_content_and_span(
     prefix_stream: TokenStream,
     cfg_content_and_span: &impl ConfigContentAndSpan,
     tag: &str,
-    tag_one_match_only: bool,
+    tag_exactly_one_match: bool,
 ) -> MacroStreamResult {
     let mut already_found = false;
 
-    selected_by_config_content_and_span(prefix_stream, cfg_content_and_span, |_, _, code_block| {
-        assert::true_or_error(!tag_one_match_only || !already_found, || {
-            format!("already found one code block with the same tag: {tag}")
-        })?;
-        let found = code_block.tag() == Some(tag);
-        already_found |= found;
-        Ok(found)
+    let result = selected_by_config_content_and_span(
+        prefix_stream,
+        cfg_content_and_span,
+        |_, _, code_block| {
+            assert::true_or_error(!tag_exactly_one_match || !already_found, || {
+                format!("already found one code block with the same tag: {tag}")
+            })?;
+            let found = code_block.tag() == Some(tag);
+            already_found |= found;
+            Ok(found)
+        },
+    );
+    assert::true_or_error(tag_exactly_one_match && !already_found, || {
+        format!("did not find a code block with the given tag: {tag}")
     })
+    .spanned(cfg_content_and_span.span())?;
+    result
 }
 // ----
 
